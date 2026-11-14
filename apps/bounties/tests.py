@@ -534,3 +534,79 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
         rejected_count = Claim.objects.filter(bounty=self.bounty, status=ClaimStatus.REJECTED).count()
         self.assertEqual(accepted_count, 1)
         self.assertEqual(rejected_count, 1)
+class SessionAndCookieFeatureTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="session_tester", email="session@campus.edu.in", password="Password123!"
+        )
+        future = timezone.now() + timedelta(days=5)
+        self.bounties = []
+        for i in range(7):
+            poster = User.objects.create_user(
+                username=f"poster_user_{i+1}",
+                email=f"poster{i+1}@campus.edu.in",
+                password="Password123!",
+            )
+            b = Bounty.objects.create(
+                poster=poster,
+                title=f"Session Testing Bounty #{i+1}",
+                description="Valid long description for testing session tracking in detail views.",
+                category=Category.TECH,
+                reward=100 + i * 25,
+                deadline=future,
+                status=BountyStatus.OPEN,
+            )
+            self.bounties.append(b)
+
+    def test_recently_viewed_session_tracking(self):
+        """
+        Verify visiting bounties updates session['recently_viewed_bounties'],
+        maintains max 5 entries, and orders by most recently viewed (MRU).
+        """
+        # Visit first 6 bounties in order: 0, 1, 2, 3, 4, 5
+        for b in self.bounties[:6]:
+            self.client.get(reverse("bounties:detail", kwargs={"pk": b.pk, "slug": b.slug}))
+
+        session = self.client.session
+        recent = session.get("recently_viewed_bounties", [])
+        
+        # Max 5 entries
+        self.assertEqual(len(recent), 5)
+        
+        # Most recent first: b5, b4, b3, b2, b1 (b0 should have been pushed out)
+        expected_ids = [self.bounties[i].id for i in [5, 4, 3, 2, 1]]
+        self.assertEqual(recent, expected_ids)
+
+        # Re-visiting b2 brings it to the front
+        self.client.get(reverse("bounties:detail", kwargs={"pk": self.bounties[2].pk, "slug": self.bounties[2].slug}))
+        session = self.client.session
+        recent_after = session.get("recently_viewed_bounties", [])
+        self.assertEqual(recent_after[0], self.bounties[2].id)
+        self.assertEqual(len(recent_after), 5)
+
+    def test_recently_viewed_strip_rendered_on_board(self):
+        """Verify the board renders the recent strip when session contains viewed bounties."""
+        b = self.bounties[0]
+        self.client.get(reverse("bounties:detail", kwargs={"pk": b.pk, "slug": b.slug}))
+
+        res_board = self.client.get(reverse("board"))
+        self.assertEqual(res_board.status_code, 200)
+        self.assertContains(res_board, "RECENT:")
+        self.assertContains(res_board, b.title[:20])
+
+    def test_layout_cookie_switch_and_rendering(self):
+        """Verify bb_layout cookie switches board between grid and list modes."""
+        # Set to list
+        resp = self.client.post(reverse("pages:set_layout"), {"layout": "list"}, HTTP_REFERER="/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.cookies["bb_layout"].value, "list")
+
+        # Load board with cookie set to list
+        self.client.cookies["bb_layout"] = "list"
+        res_list = self.client.get(reverse("board"))
+        self.assertContains(res_list, 'class="bounty-list"')
+
+        # Load board with cookie set to grid
+        self.client.cookies["bb_layout"] = "grid"
+        res_grid = self.client.get(reverse("board"))
+        self.assertContains(res_grid, 'class="bounty-grid"')
