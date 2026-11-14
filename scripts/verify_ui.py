@@ -54,6 +54,15 @@ def verify():
             page.goto("http://127.0.0.1:8089/about/")
             assert "About" in page.title()
 
+            # Test Accounts pages
+            page.goto("http://127.0.0.1:8089/accounts/login/")
+            assert "Login" in page.title()
+            assert page.locator("input[name='username_or_email']").is_visible()
+
+            page.goto("http://127.0.0.1:8089/accounts/signup/")
+            assert "Sign Up" in page.title()
+            assert page.locator("input[name='email']").is_visible()
+
             print(f"[{label.upper()} {width}px] UI verified successfully.")
             context.close()
 

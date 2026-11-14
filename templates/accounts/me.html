@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}My Dashboard | Bounty Board{% endblock %}
+
+{% block content %}
+<div style="padding-top: var(--spacing-6); padding-bottom: var(--spacing-12);">
+  <!-- Top Profile Card -->
+  <div class="brutal-card brutal-card--yellow" style="margin-bottom: var(--spacing-8);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-4);">
+      <div>
+        <div style="display: flex; align-items: center; gap: var(--spacing-3); margin-bottom: var(--spacing-2);">
+          <h1 class="page-title" style="margin: 0; font-size: var(--text-3xl);">
+            {{ user.username|upper }}
+          </h1>
+          {% if is_moderator %}
+            <span class="stamp-badge stamp-claimed">MODERATOR</span>
+          {% else %}
+            <span class="stamp-badge stamp-open">CAMPUS STUDENT</span>
+          {% endif %}
+        </div>
+        <p style="margin: 0; font-size: var(--text-sm); color: var(--muted-ink);">
+          Email: <strong>{{ user.email }}</strong> &bull; Active Open Bounties: <strong>{{ open_bounties_count }}/5</strong>
+        </p>
+      </div>
+
+      <div style="display: flex; gap: var(--spacing-3);">
+        <a href="/bounties/new/" class="btn btn-primary">+ POST NEW BOUNTY</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard 2-column or stacked view -->
+  <div style="display: flex; flex-direction: column; gap: var(--spacing-10);">
+    
+    <!-- SECTION 1: Bounties I Posted -->
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4); border-bottom: var(--border-thick); padding-bottom: var(--spacing-2);">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); margin: 0;">
+          BOUNTIES POSTED BY ME ({{ posted_bounties|length }})
+        </h2>
+        <span style="font-size: var(--text-sm); font-weight: 700;">Max 5 Open</span>
+      </div>
+
+      {% if posted_bounties %}
+        <div style="display: flex; flex-direction: column; gap: var(--spacing-4);">
+          {% for b in posted_bounties %}
+            <div class="brutal-card {% cycle 'brutal-card--white' 'brutal-card--mint' %}">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-3); margin-bottom: var(--spacing-3);">
+                <div>
+                  <span class="chip-category" data-cat="{{ b.category }}" style="margin-right: var(--spacing-2);">{{ b.category }}</span>
+                  <a href="/bounties/{{ b.pk }}/{{ b.slug }}/" style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-xl); color: var(--ink); text-decoration: none;">
+                    {{ b.title }}
+                  </a>
+                </div>
+                <div style="display: flex; align-items: center; gap: var(--spacing-3);">
+                  <span class="sticker-reward">₹{{ b.reward }}</span>
+                  {% if b.is_expired %}
+                    <span class="stamp-badge stamp-expired">EXPIRED</span>
+                  {% elif b.status == 'OPEN' %}
+                    <span class="stamp-badge stamp-open">OPEN</span>
+                  {% elif b.status == 'CLAIMED' %}
+                    <span class="stamp-badge stamp-claimed">CLAIMED</span>
+                  {% elif b.status == 'DONE' %}
+                    <span class="stamp-badge stamp-done">DONE</span>
+                  {% elif b.status == 'CANCELLED' %}
+                    <span class="stamp-badge stamp-cancelled">CANCELLED</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <p style="font-size: var(--text-sm); color: #333333; margin: 0 0 var(--spacing-4) 0; line-height: 1.4;">
+                {{ b.description|truncatewords:30 }}
+              </p>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-3); border-top: 1.5px dashed var(--ink); padding-top: var(--spacing-3); font-size: var(--text-xs);">
+                <div>
+                  <strong>Deadline:</strong> {{ b.deadline|date:"M d, Y H:i" }} &bull;
+                  <strong>Total Claims:</strong> {{ b.claims.count }}
+                  {% if b.accepted_claim %}
+                    &bull; <strong>Accepted:</strong> {{ b.accepted_claim.claimant.username }} ({{ b.accepted_claim.contact }})
+                  {% endif %}
+                </div>
+
+                <div style="display: flex; gap: var(--spacing-2); align-items: center;">
+                  <a href="/bounties/{{ b.pk }}/{{ b.slug }}/" class="btn btn-sm">VIEW &amp; CLAIMS</a>
+                  
+                  {% if b.status == 'OPEN' and not b.is_expired %}
+                    <a href="/bounties/{{ b.pk }}/edit/" class="btn btn-sm">EDIT</a>
+                    <form action="/bounties/{{ b.pk }}/cancel/" method="post" style="display: inline; margin: 0;">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Cancel this bounty?');">CANCEL</button>
+                    </form>
+                  {% endif %}
+
+                  {% if b.status == 'CLAIMED' %}
+                    <form action="/bounties/{{ b.pk }}/done/" method="post" style="display: inline; margin: 0;">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-mint" onclick="return confirm('Mark this bounty as done? Offline payment should be completed.');">MARK DONE</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">
+          <div class="empty-title">NO BOUNTIES POSTED YET</div>
+          <div class="empty-sub">Got a coding bug, PCB soldering task, or slide deck to polish? Put a reward on it!</div>
+          <a href="/bounties/new/" class="btn btn-primary">+ POST YOUR FIRST BOUNTY</a>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- SECTION 2: My Claims on Other Bounties -->
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4); border-bottom: var(--border-thick); padding-bottom: var(--spacing-2);">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); margin: 0;">
+          MY CLAIMS ({{ submitted_claims|length }})
+        </h2>
+        <span style="font-size: var(--text-sm); font-weight: 700;">Tasks you offered to solve</span>
+      </div>
+
+      {% if submitted_claims %}
+        <div style="display: flex; flex-direction: column; gap: var(--spacing-4);">
+          {% for c in submitted_claims %}
+            <div class="brutal-card {% if c.status == 'ACCEPTED' %}brutal-card--mint{% elif c.status == 'REJECTED' %}brutal-card--white{% else %}brutal-card--yellow{% endif %}">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-3); margin-bottom: var(--spacing-2);">
+                <div>
+                  <a href="/bounties/{{ c.bounty.pk }}/{{ c.bounty.slug }}/" style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-lg); color: var(--ink); text-decoration: none;">
+                    {{ c.bounty.title }}
+                  </a>
+                  <div style="font-size: var(--text-xs); color: var(--muted-ink); margin-top: 2px;">
+                    Poster: <strong>{{ c.bounty.poster.username }}</strong>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: var(--spacing-3);">
+                  <span class="sticker-reward">₹{{ c.bounty.reward }}</span>
+                  {% if c.status == 'ACCEPTED' %}
+                    <span class="stamp-badge stamp-open">ACCEPTED 🎉</span>
+                  {% elif c.status == 'PENDING' %}
+                    <span class="stamp-badge stamp-claimed">PENDING REVIEW</span>
+                  {% elif c.status == 'REJECTED' %}
+                    <span class="stamp-badge stamp-cancelled">REJECTED</span>
+                  {% elif c.status == 'WITHDRAWN' %}
+                    <span class="stamp-badge stamp-expired">WITHDRAWN</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- My pitch -->
+              <div style="background-color: var(--white); border: 2px solid var(--ink); padding: var(--spacing-3); margin: var(--spacing-2) 0; font-size: var(--text-sm);">
+                <strong>Your pitch:</strong> {{ c.message }}
+              </div>
+
+              {% if c.status == 'ACCEPTED' %}
+                <div style="background-color: var(--mint); border: 2px solid var(--ink); padding: var(--spacing-3); font-weight: 700; font-size: var(--text-sm); margin-bottom: var(--spacing-2);">
+                  🎉 YOUR CLAIM WAS ACCEPTED! Poster contact email: <u>{{ c.bounty.poster.email }}</u>. Coordinate directly and settle offline!
+                </div>
+              {% endif %}
+
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-3); padding-top: var(--spacing-2); font-size: var(--text-xs);">
+                <div>
+                  Submitted on {{ c.created_at|date:"M d, Y H:i" }} &bull; Contact handle provided: {{ c.contact }}
+                </div>
+
+                <div>
+                  {% if c.status == 'PENDING' %}
+                    <form action="/claims/{{ c.pk }}/withdraw/" method="post" style="display: inline; margin: 0;">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Withdraw your claim?');">WITHDRAW CLAIM</button>
+                    </form>
+                  {% endif %}
+                  <a href="/bounties/{{ c.bounty.pk }}/{{ c.bounty.slug }}/" class="btn btn-sm">VIEW BOUNTY</a>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">
+          <div class="empty-title">NO CLAIMS SUBMITTED</div>
+          <div class="empty-sub">Explore the board, find a problem in your wheelhouse, and claim a bounty!</div>
+          <a href="/" class="btn btn-primary">BROWSE LIVE BOUNTIES &rarr;</a>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

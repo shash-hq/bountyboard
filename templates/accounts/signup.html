@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card brutal-card--yellow">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4);">
+      <h1 class="page-title" style="margin: 0;">JOIN THE BOARD</h1>
+      <span class="stamp-badge stamp-open">STUDENT ACCESS</span>
+    </div>
+    
+    <p style="font-size: var(--text-sm); margin-bottom: var(--spacing-6); color: var(--muted-ink);">
+      Post micro-tasks or claim quick cash bounties. No fees, peer-to-peer.
+    </p>
+
+    {% if form.non_field_errors %}
+      <div class="field-error" style="margin-bottom: var(--spacing-4);">
+        {% for error in form.non_field_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:signup' %}" novalidate>
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label" for="id_username">Campus Username</label>
+        {{ form.username }}
+        {% if form.username.help_text %}
+          <div class="field-help">{{ form.username.help_text }}</div>
+        {% endif %}
+        {% for error in form.username.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="id_email">Campus Email</label>
+        {{ form.email }}
+        {% if form.email.help_text %}
+          <div class="field-help">{{ form.email.help_text }}</div>
+        {% endif %}
+        {% for error in form.email.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="id_password">Password</label>
+        {{ form.password }}
+        {% for error in form.password.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="id_password_confirm">Confirm Password</label>
+        {{ form.password_confirm }}
+        {% for error in form.password_confirm.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top: var(--spacing-4);">
+        CREATE ACCOUNT &rarr;
+      </button>
+    </form>
+
+    <div style="margin-top: var(--spacing-6); text-align: center; border-top: 2px dashed var(--ink); padding-top: var(--spacing-4); font-size: var(--text-sm);">
+      Already have an account? <a href="{% url 'accounts:login' %}" style="font-weight: 800; color: var(--ink);">Login here</a>.
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Login | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4);">
+      <h1 class="page-title" style="margin: 0;">LOG IN</h1>
+      <span class="stamp-badge stamp-claimed">CAMPUS ONLY</span>
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="field-error" style="margin-bottom: var(--spacing-4);">
+        {% for error in form.non_field_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:login' %}" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}">
+
+      <div class="form-group">
+        <label class="form-label" for="id_username_or_email">Username or Email</label>
+        {{ form.username_or_email }}
+        {% for error in form.username_or_email.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label class="form-label" for="id_password">Password</label>
+          <a href="{% url 'accounts:password_reset' %}" style="font-size: var(--text-xs); color: var(--muted-ink); font-weight: 700;">Forgot password?</a>
+        </div>
+        {{ form.password }}
+        {% for error in form.password.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top: var(--spacing-4);">
+        LOG IN &rarr;
+      </button>
+    </form>
+
+    <div style="margin-top: var(--spacing-6); text-align: center; border-top: 2px dashed var(--ink); padding-top: var(--spacing-4); font-size: var(--text-sm);">
+      New to Bounty Board? <a href="{% url 'accounts:signup' %}" style="font-weight: 800; color: var(--ink);">Sign up in 30 seconds</a>.
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,231 @@
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinLengthValidator, MinValueValidator
+from django.db import models
+from django.utils import timezone
+from django.utils.text import slugify
+
+User = get_user_model()
+
+
+class Category(models.TextChoices):
+    TECH = "Tech", "Tech"
+    DESIGN = "Design", "Design"
+    WRITING = "Writing", "Writing"
+    ACADEMICS = "Academics", "Academics"
+    ERRANDS = "Errands", "Errands"
+    OTHER = "Other", "Other"
+
+
+class BountyStatus(models.TextChoices):
+    OPEN = "OPEN", "OPEN"
+    CLAIMED = "CLAIMED", "CLAIMED"
+    DONE = "DONE", "DONE"
+    CANCELLED = "CANCELLED", "CANCELLED"
+
+
+class ClaimStatus(models.TextChoices):
+    PENDING = "PENDING", "PENDING"
+    ACCEPTED = "ACCEPTED", "ACCEPTED"
+    REJECTED = "REJECTED", "REJECTED"
+    WITHDRAWN = "WITHDRAWN", "WITHDRAWN"
+
+
+class ReportReason(models.TextChoices):
+    ACADEMIC_DISHONESTY = "ACADEMIC_DISHONESTY", "Academic Dishonesty"
+    SCAM = "SCAM", "Scam / Fake Bounty"
+    HARASSMENT = "HARASSMENT", "Harassment / Offensive"
+    COMMERCIAL_SPAM = "COMMERCIAL_SPAM", "Commercial Spam"
+    OTHER = "OTHER", "Other"
+
+
+class Bounty(models.Model):
+    poster = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="posted_bounties"
+    )
+    title = models.CharField(
+        max_length=80,
+        validators=[MinLengthValidator(8, "Title must be at least 8 characters.")],
+        help_text="Short, descriptive title (8-80 characters).",
+    )
+    slug = models.SlugField(max_length=100, blank=True)
+    description = models.TextField(
+        validators=[MinLengthValidator(20, "Description must be at least 20 characters.")],
+        help_text="Clear scope and deliverables (20-1000 characters).",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.TECH,
+    )
+    reward = models.PositiveIntegerField(
+        validators=[
+            MinValueValidator(10, "Minimum reward is ₹10."),
+            MaxValueValidator(10000, "Maximum reward is ₹10,000."),
+        ],
+        help_text="Reward amount in INR (₹10 to ₹10,000).",
+    )
+    deadline = models.DateTimeField(
+        help_text="When must this task be completed?",
+    )
+    status = models.CharField(
+        max_length=15,
+        choices=BountyStatus.choices,
+        default=BountyStatus.OPEN,
+    )
+    accepted_claim = models.OneToOneField(
+        "Claim",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_for_bounty",
+    )
+    is_hidden = models.BooleanField(
+        default=False,
+        help_text="Hidden by moderators due to policy violations.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Bounty"
+        verbose_name_plural = "Bounties"
+        permissions = [
+            ("moderate", "Can moderate bounties and reports"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} (₹{self.reward})"
+
+    def clean(self):
+        super().clean()
+        # Max length check for description (20-1000)
+        if self.description and len(self.description) > 1000:
+            raise ValidationError({"description": "Description cannot exceed 1000 characters."})
+
+        # Deadline validation for new or modified deadline
+        if self.deadline and self.pk is None and self.deadline <= timezone.now():
+            raise ValidationError({"deadline": "Deadline must be in the future."})
+
+        # Max 5 OPEN bounties per user rule (enforced on new bounties)
+        if self.pk is None and self.poster_id and self.status == BountyStatus.OPEN:
+            open_count = Bounty.objects.filter(
+                poster=self.poster, status=BountyStatus.OPEN, is_hidden=False
+            ).count()
+            if open_count >= 5:
+                raise ValidationError(
+                    "You already have 5 active OPEN bounties. Complete or cancel one before posting more."
+                )
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)[:80] or "bounty"
+            self.slug = base_slug
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self) -> bool:
+        """Computed property: true if deadline has passed and bounty is still marked OPEN."""
+        return self.status == BountyStatus.OPEN and self.deadline <= timezone.now()
+
+    @property
+    def display_status(self) -> str:
+        if self.is_expired:
+            return "EXPIRED"
+        return self.status
+
+    def can_edit(self, user) -> bool:
+        return user.is_authenticated and self.poster_id == user.id and self.status == BountyStatus.OPEN
+
+    def can_claim(self, user) -> bool:
+        if not user.is_authenticated:
+            return False
+        if self.poster_id == user.id:
+            return False
+        if self.status != BountyStatus.OPEN or self.is_expired or self.is_hidden:
+            return False
+        return not self.claims.filter(claimant=user).exists()
+
+
+class Claim(models.Model):
+    bounty = models.ForeignKey(
+        Bounty, on_delete=models.CASCADE, related_name="claims"
+    )
+    claimant = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="submitted_claims"
+    )
+    message = models.TextField(
+        validators=[MinLengthValidator(10, "Message must be at least 10 characters.")],
+        help_text="Why you can solve this task (10-500 characters).",
+    )
+    contact = models.CharField(
+        max_length=150,
+        help_text="WhatsApp number or contact handle (visible ONLY to the poster).",
+    )
+    status = models.CharField(
+        max_length=15,
+        choices=ClaimStatus.choices,
+        default=ClaimStatus.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bounty", "claimant"], name="unique_bounty_claimant"
+            )
+        ]
+
+    def __str__(self):
+        return f"Claim by {self.claimant.username} on {self.bounty.title} [{self.status}]"
+
+    def clean(self):
+        super().clean()
+        if self.message and len(self.message) > 500:
+            raise ValidationError({"message": "Message cannot exceed 500 characters."})
+
+        # Cannot claim own bounty
+        if self.bounty_id and self.claimant_id and self.bounty.poster_id == self.claimant_id:
+            raise ValidationError("You cannot claim your own bounty.")
+
+        # Cannot claim non-open or expired bounty
+        if self.pk is None and self.bounty_id:
+            if self.bounty.status != BountyStatus.OPEN or self.bounty.is_expired or self.bounty.is_hidden:
+                raise ValidationError("This bounty is no longer accepting claims.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class Report(models.Model):
+    bounty = models.ForeignKey(
+        Bounty, on_delete=models.CASCADE, related_name="reports"
+    )
+    reporter = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="filed_reports"
+    )
+    reason = models.CharField(
+        max_length=30,
+        choices=ReportReason.choices,
+        default=ReportReason.OTHER,
+    )
+    note = models.TextField(
+        blank=True,
+        help_text="Optional context for campus moderators.",
+    )
+    resolved = models.BooleanField(
+        default=False,
+        help_text="Marked resolved by a moderator.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Report on {self.bounty.title} by {self.reporter.username}"

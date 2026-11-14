@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Bounty Board | Campus Micro-Tasks{% endblock %}
+
+{% block content %}
+<!-- Live Board Hero -->
+<header class="board-header">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-4);">
+    <div>
+      <h1 class="board-headline">CAMPUS MICRO-TASKS.<br>SETTLE OFFLINE.</h1>
+      <p class="board-tagline">
+        Get quick coding, PCB, slide deck, and campus tasks solved by peers for ₹10 to ₹10,000.
+      </p>
+      
+      <div class="board-actions">
+        <a href="/bounties/new/" class="btn btn-primary btn-lg">+ POST A BOUNTY</a>
+        <div class="offline-banner">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Settle offline via UPI/Cash upon delivery
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Recently Viewed Strip -->
+{% if recent_bounties %}
+  <section class="recent-strip" aria-label="Recently viewed bounties">
+    <span class="recent-label">RECENT:</span>
+    {% for b in recent_bounties %}
+      <a href="/bounties/{{ b.pk }}/{{ b.slug }}/" class="recent-item">
+        <span>{{ b.title|truncatechars:28 }}</span>
+        <strong>₹{{ b.reward }}</strong>
+      </a>
+    {% endfor %}
+  </section>
+{% endif %}
+
+<!-- Filters & Search Form -->
+<section class="filter-card">
+  <form method="get" action="/" class="filter-form">
+    <div class="form-group" style="margin: 0;">
+      <label class="form-label" for="search-input">Search Tasks</label>
+      <input type="text" id="search-input" name="q" value="{{ q }}" placeholder="e.g. Arduino, Figma, Python..." class="input-text">
+    </div>
+
+    <div class="form-group" style="margin: 0;">
+      <label class="form-label" for="filter-category">Category</label>
+      <select id="filter-category" name="category" class="input-select">
+        <option value="">All Categories</option>
+        {% for cat_val, cat_label in categories %}
+          <option value="{{ cat_val }}" {% if category == cat_val %}selected{% endif %}>{{ cat_label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group" style="margin: 0;">
+      <label class="form-label" for="filter-status">Status</label>
+      <select id="filter-status" name="status" class="input-select">
+        <option value="">All Statuses</option>
+        {% for stat_val, stat_label in statuses %}
+          <option value="{{ stat_val }}" {% if status == stat_val %}selected{% endif %}>{{ stat_label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group" style="margin: 0;">
+      <label class="form-label" for="filter-sort">Sort By</label>
+      <select id="filter-sort" name="sort" class="input-select">
+        <option value="newest" {% if sort == "newest" %}selected{% endif %}>Newest First</option>
+        <option value="reward_high" {% if sort == "reward_high" %}selected{% endif %}>Highest Reward (₹)</option>
+        <option value="reward_low" {% if sort == "reward_low" %}selected{% endif %}>Lowest Reward (₹)</option>
+        <option value="deadline_soon" {% if sort == "deadline_soon" %}selected{% endif %}>Deadline Soonest</option>
+      </select>
+    </div>
+
+    <div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;">FILTER</button>
+    </div>
+  </form>
+</section>
+
+<!-- Active Bounties Feed -->
+{% if bounties %}
+  <div class="{% if bb_layout == 'list' %}bounty-list{% else %}bounty-grid{% endif %}">
+    {% for b in bounties %}
+      <div class="brutal-card bounty-card {% cycle 'brutal-card--white' 'brutal-card--yellow' 'brutal-card--mint' %}">
+        <div class="card-top">
+          <span class="chip-category" data-cat="{{ b.category }}">{{ b.category }}</span>
+          <span class="sticker-reward">₹{{ b.reward }}</span>
+        </div>
+
+        <div style="flex: 1;">
+          <h2 class="card-title">
+            <a href="/bounties/{{ b.pk }}/{{ b.slug }}/" style="color: var(--ink); text-decoration: none;">
+              {{ b.title }}
+            </a>
+          </h2>
+          <p class="card-desc">
+            {{ b.description }}
+          </p>
+        </div>
+
+        <div>
+          <div class="card-meta">
+            <div>
+              <strong>{{ b.claim_count|default:"0" }}</strong> claims &bull; Due {{ b.deadline|date:"M d, H:i" }}
+            </div>
+            <div>
+              {% if b.is_expired %}
+                <span class="stamp-badge stamp-expired">EXPIRED</span>
+              {% elif b.status == 'OPEN' %}
+                <span class="stamp-badge stamp-open">OPEN</span>
+              {% elif b.status == 'CLAIMED' %}
+                <span class="stamp-badge stamp-claimed">CLAIMED</span>
+              {% elif b.status == 'DONE' %}
+                <span class="stamp-badge stamp-done">DONE</span>
+              {% elif b.status == 'CANCELLED' %}
+                <span class="stamp-badge stamp-cancelled">CANCELLED</span>
+              {% endif %}
+            </div>
+          </div>
+          <div style="margin-top: var(--spacing-3);">
+            <a href="/bounties/{{ b.pk }}/{{ b.slug }}/" class="btn btn-sm btn-block">VIEW DETAILS &rarr;</a>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+    <nav class="pagination" aria-label="Bounty board pagination">
+      {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&category={{ category }}&status={{ status }}&sort={{ sort }}" class="page-link">&laquo; PREV</a>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+          <span class="page-link current">{{ num }}</span>
+        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <a href="?page={{ num }}&q={{ q }}&category={{ category }}&status={{ status }}&sort={{ sort }}" class="page-link">{{ num }}</a>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&category={{ category }}&status={{ status }}&sort={{ sort }}" class="page-link">NEXT &raquo;</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+{% else %}
+  <div class="empty-box">
+    <div class="empty-title">NO BOUNTIES FOUND</div>
+    <div class="empty-sub">No tasks match your current search or filters. Be the first to post one!</div>
+    <a href="/bounties/new/" class="btn btn-primary">+ POST A BOUNTY</a>
+  </div>
+{% endif %}
+{% endblock %}
