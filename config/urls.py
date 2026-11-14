@@ -9,14 +9,11 @@ urlpatterns = [
     path("", include("apps.pages.urls", namespace="pages")),
 ]
 
-if settings.DEBUG:
-    try:
-        import debug_toolbar
-        urlpatterns = [
-            path("__debug__/", include(debug_toolbar.urls)),
-        ] + urlpatterns
-    except ImportError:
-        pass
+if "debug_toolbar" in settings.INSTALLED_APPS:
+    import debug_toolbar
+    urlpatterns = [
+        path("__debug__/", include(debug_toolbar.urls)),
+    ] + urlpatterns
 
 handler400 = "apps.pages.views.handler400"
 handler403 = "apps.pages.views.handler403"

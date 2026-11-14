@@ -1,0 +1,89 @@
+/* ==========================================================================
+   NEO-BRUTALIST DESIGN TOKENS
+   Handcrafted for Campus Bounty Board
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap');
+
+:root {
+  /* Primitive Colors */
+  --bg-cream: #FFF6DC;
+  --ink: #111111;
+  --yellow: #FFD60A;
+  --pink: #FF5FA2;
+  --mint: #5CE1A8;
+  --white: #FFFFFF;
+  --purple-subtle: #E8DDFF;
+  --gray-light: #F4EEDC;
+  --muted-ink: #444444;
+
+  /* Semantic Palettes */
+  --color-bg: var(--bg-cream);
+  --color-text: var(--ink);
+  --color-primary: var(--yellow);
+  --color-accent-pink: var(--pink);
+  --color-accent-mint: var(--mint);
+  --color-card-bg: var(--white);
+  --color-border: var(--ink);
+
+  /* Status Colors */
+  --status-open-bg: var(--mint);
+  --status-claimed-bg: var(--yellow);
+  --status-done-bg: var(--white);
+  --status-cancelled-bg: var(--pink);
+
+  /* Borders & Shadows - Exact Brutalist Rules */
+  --border-width: 3px;
+  --border-style: solid;
+  --border-color: var(--ink);
+  --border-thick: var(--border-width) var(--border-style) var(--border-color);
+  
+  --shadow-offset: 6px;
+  --shadow-hard: var(--shadow-offset) var(--shadow-offset) 0 var(--ink);
+  --shadow-hover: 8px 8px 0 var(--ink);
+  --shadow-subtle: 3px 3px 0 var(--ink);
+  --shadow-none: 0 0 0 transparent;
+
+  /* Typography */
+  --font-display: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: 'Archivo', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Type Scale */
+  --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.8125rem);
+  --text-sm: clamp(0.875rem, 0.82rem + 0.27vw, 0.9375rem);
+  --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --text-lg: clamp(1.125rem, 1.05rem + 0.38vw, 1.25rem);
+  --text-xl: clamp(1.35rem, 1.25rem + 0.5vw, 1.5rem);
+  --text-2xl: clamp(1.75rem, 1.55rem + 1vw, 2.25rem);
+  --text-3xl: clamp(2.25rem, 1.95rem + 1.5vw, 3rem);
+  --text-huge: clamp(2.75rem, 2.2rem + 2.75vw, 4.5rem);
+
+  /* Layout & Spacing */
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+
+  --container-max: 1240px;
+  --min-tap-target: 44px;
+
+  /* Motion */
+  --transition-fast: 0.1s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

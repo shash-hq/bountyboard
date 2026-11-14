@@ -1,0 +1,482 @@
+/* ==========================================================================
+   NEO-BRUTALIST COMPONENTS
+   Pure server-rendered HTML support, 0px border-radius, hard shadows
+   ========================================================================== */
+
+/* Universal Reset & Base Elements */
+*, *::before, *::after {
+  box-sizing: border-box;
+  border-radius: 0 !important; /* Strict Neo-Brutalist rule: no rounded corners */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Accessibility: Skip Link */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1rem;
+  background: var(--yellow);
+  color: var(--ink);
+  font-weight: 700;
+  padding: 0.75rem 1.25rem;
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  z-index: 9999;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 1rem;
+  outline: 4px solid var(--ink);
+}
+
+/* Accessible focus visible */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 4px solid var(--yellow) !important;
+  outline-offset: 3px !important;
+}
+
+/* Containers */
+.container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--spacing-4);
+  padding-right: var(--spacing-4);
+}
+
+/* Header & Navigation */
+.site-header {
+  background-color: var(--white);
+  border-bottom: var(--border-thick);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--spacing-3);
+  padding-bottom: var(--spacing-3);
+  gap: var(--spacing-4);
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  text-decoration: none;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xl);
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.brand-badge {
+  background-color: var(--yellow);
+  border: 2px solid var(--ink);
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  font-weight: 800;
+  transform: rotate(-4deg);
+  display: inline-block;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-base);
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  padding: 0.65rem 1.25rem;
+  min-height: var(--min-tap-target);
+  min-width: var(--min-tap-target);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  background-color: var(--white);
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  user-select: none;
+  line-height: 1;
+}
+
+.btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: var(--shadow-none);
+}
+
+.btn-primary {
+  background-color: var(--yellow);
+}
+.btn-primary:hover {
+  background-color: #ffd000;
+}
+
+.btn-accent {
+  background-color: var(--pink);
+  color: var(--white);
+}
+
+.btn-mint {
+  background-color: var(--mint);
+}
+
+.btn-danger {
+  background-color: var(--pink);
+  color: var(--white);
+}
+
+.btn-sm {
+  padding: 0.4rem 0.75rem;
+  font-size: var(--text-sm);
+  min-height: 38px;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.btn-sm:hover {
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.btn-sm:active {
+  box-shadow: var(--shadow-none);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* Brutalist Cards */
+.brutal-card {
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  padding: var(--spacing-5);
+  position: relative;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.brutal-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.brutal-card--yellow {
+  background-color: #FFFCE0;
+}
+
+.brutal-card--mint {
+  background-color: #EBFDF4;
+}
+
+.brutal-card--pink {
+  background-color: #FFF0F6;
+}
+
+.brutal-card--white {
+  background-color: var(--white);
+}
+
+/* Rubber Stamp Badges */
+.stamp-badge {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem;
+  border: 2px solid var(--ink);
+  line-height: 1;
+  transform: rotate(2deg);
+}
+
+.stamp-open {
+  background-color: var(--mint);
+  color: var(--ink);
+}
+
+.stamp-claimed {
+  background-color: var(--yellow);
+  color: var(--ink);
+}
+
+.stamp-done {
+  background-color: var(--white);
+  color: var(--ink);
+  border-style: dashed;
+}
+
+.stamp-cancelled {
+  background-color: var(--pink);
+  color: var(--white);
+  transform: rotate(-3deg);
+}
+
+.stamp-expired {
+  background-color: #E2E2E2;
+  color: #555555;
+  transform: rotate(1deg);
+}
+
+/* Reward Sticker */
+.sticker-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--yellow);
+  border: 2.5px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-lg);
+  padding: 0.35rem 0.75rem;
+  transform: rotate(-3deg);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Category Chips */
+.chip-category {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+  border: 1.5px solid var(--ink);
+  background-color: var(--white);
+  color: var(--ink);
+}
+
+.chip-category[data-cat="Tech"] { background-color: #D3F3EE; }
+.chip-category[data-cat="Design"] { background-color: #FFE0EE; }
+.chip-category[data-cat="Writing"] { background-color: #FFF3C4; }
+.chip-category[data-cat="Academics"] { background-color: #E3E9FE; }
+.chip-category[data-cat="Errands"] { background-color: #E2F7C2; }
+.chip-category[data-cat="Other"] { background-color: #EBEBEB; }
+
+/* Forms */
+.form-group {
+  margin-bottom: var(--spacing-5);
+}
+
+.form-label {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--spacing-2);
+  color: var(--ink);
+}
+
+.input-text,
+.input-select,
+.input-textarea {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--ink);
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-subtle);
+  padding: 0.75rem 1rem;
+  min-height: var(--min-tap-target);
+  transition: box-shadow var(--transition-fast);
+}
+
+.input-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.input-text:focus,
+.input-select:focus,
+.input-textarea:focus {
+  outline: 4px solid var(--yellow);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-hard);
+}
+
+.field-help {
+  font-size: var(--text-xs);
+  color: var(--muted-ink);
+  margin-top: var(--spacing-1);
+}
+
+/* Brutalist Pink Block Inline Errors */
+.field-error {
+  margin-top: var(--spacing-2);
+  padding: 0.5rem 0.75rem;
+  background-color: var(--pink);
+  color: var(--white);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+/* Flash Messages / Alerts */
+.messages-container {
+  margin-top: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+}
+
+.alert {
+  padding: var(--spacing-4);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  font-weight: 700;
+  margin-bottom: var(--spacing-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.alert-success {
+  background-color: var(--mint);
+  color: var(--ink);
+}
+
+.alert-danger {
+  background-color: var(--pink);
+  color: var(--white);
+}
+
+.alert-warning {
+  background-color: var(--yellow);
+  color: var(--ink);
+}
+
+.alert-info, .alert-debug {
+  background-color: var(--white);
+  color: var(--ink);
+}
+
+/* CSS-Only Ticker Strip */
+.ticker-strip {
+  background-color: var(--yellow);
+  border-bottom: var(--border-thick);
+  overflow: hidden;
+  white-space: nowrap;
+  padding: var(--spacing-2) 0;
+  display: flex;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+}
+
+.ticker-content {
+  display: inline-flex;
+  animation: ticker-slide 28s linear infinite;
+  gap: var(--spacing-6);
+  padding-left: 100%;
+}
+
+@keyframes ticker-slide {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-100%, 0, 0); }
+}
+
+/* Brutalist Icons (Inline SVG helpers) */
+.icon {
+  width: 1.25em;
+  height: 1.25em;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  fill: none;
+  vertical-align: middle;
+}
+
+/* Layout Switcher */
+.layout-toggle-form {
+  display: inline-flex;
+  border: var(--border-thick);
+  background-color: var(--white);
+}
+
+.layout-toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.layout-toggle-btn.active {
+  background-color: var(--yellow);
+}
+
+/* Footer */
+.site-footer {
+  margin-top: auto;
+  background-color: var(--ink);
+  color: var(--white);
+  border-top: var(--border-thick);
+  padding-top: var(--spacing-10);
+  padding-bottom: var(--spacing-10);
+}
+
+.site-footer a {
+  color: var(--yellow);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.site-footer a:hover {
+  background-color: var(--yellow);
+  color: var(--ink);
+  text-decoration: none;
+}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy | Bounty Board{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: var(--spacing-8) auto;">
+  <div class="brutal-card">
+    <h1 class="page-title">PRIVACY POLICY</h1>
+    <div style="font-size: var(--text-base); line-height: 1.6; display: flex; flex-direction: column; gap: var(--spacing-4);">
+      <p>
+        We respect student privacy and collect only the minimal data required to coordinate micro-tasks.
+      </p>
+      <div>
+        <strong>What we store:</strong> Your username, email address, bounty details, and claim messages.
+      </div>
+      <div>
+        <strong>Contact visibility:</strong> Your claim contact information (WhatsApp or email) is hidden from the public and visible ONLY to the bounty poster. The poster's email is revealed to you ONLY after your claim is formally accepted.
+      </div>
+      <div>
+        <strong>Cookies &amp; Sessions:</strong> We use essential HTTP cookies for CSRF protection, session management, and your preferred board layout (grid or list). We do not use third-party tracking, advertising cookies, or analytics beacons.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

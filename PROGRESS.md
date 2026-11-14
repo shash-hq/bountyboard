@@ -5,7 +5,7 @@ Campus micro-task marketplace for Indian university students.
 ## Milestones
 
 - [x] **M0: Foundation (v0.1)** - Repo setup, Python 3.13 + Django 5.2 layout, split settings, CI, env config, PROGRESS.md.
-- [ ] **M1: Design System (v0.2)** - Neo-brutalist CSS architecture, base layout, /styleguide/, custom error handlers (400, 403, 404, 500).
+- [x] **M1: Design System (v0.2)** - Neo-brutalist CSS architecture, base layout, /styleguide/, custom error handlers (400, 403, 404, 500).
 - [ ] **M2: Accounts (v0.3)** - User registration with unique email, optional domain restriction, auth flows, /me/, Moderators group migration.
 - [ ] **M3: Bounties (v0.4)** - Bounty domain model, clean validation, admin, board filtering/search/pagination, seed_demo command, tests.
 - [ ] **M4: Claims & Permissions (v0.5)** - Atomic claim acceptance (select_for_update), contact visibility rules, withdrawal, notification emails, race tests.

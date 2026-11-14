@@ -1,0 +1,386 @@
+/* ==========================================================================
+   NEO-BRUTALIST PAGE-SPECIFIC LAYOUTS
+   ========================================================================== */
+
+/* Main Live Board Header */
+.board-header {
+  padding-top: var(--spacing-8);
+  padding-bottom: var(--spacing-6);
+  border-bottom: var(--border-thick);
+  background-color: var(--white);
+  position: relative;
+}
+
+.board-headline {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-huge);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  text-transform: uppercase;
+  margin: 0 0 var(--spacing-4) 0;
+  max-width: 900px;
+}
+
+.board-tagline {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  margin-bottom: var(--spacing-6);
+  max-width: 700px;
+}
+
+.board-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  flex-wrap: wrap;
+}
+
+/* Offline Settlement Notice */
+.offline-banner {
+  background-color: var(--yellow);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-subtle);
+  padding: var(--spacing-3) var(--spacing-4);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Filter Bar */
+.filter-card {
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  padding: var(--spacing-4);
+  margin-top: var(--spacing-6);
+  margin-bottom: var(--spacing-6);
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: var(--spacing-3);
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .filter-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .filter-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Recently Viewed Strip */
+.recent-strip {
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  padding: var(--spacing-3) var(--spacing-4);
+  margin-bottom: var(--spacing-6);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  overflow-x: auto;
+}
+
+.recent-label {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  white-space: nowrap;
+  background-color: var(--ink);
+  color: var(--white);
+  padding: 4px 8px;
+}
+
+.recent-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--bg-cream);
+  border: 1.5px solid var(--ink);
+  padding: 4px 10px;
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.recent-item:hover {
+  background-color: var(--yellow);
+}
+
+/* Bounty Grid (Asymmetric card grid) */
+.bounty-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--spacing-6);
+  margin-bottom: var(--spacing-10);
+}
+
+/* Bounty List Layout */
+.bounty-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-10);
+}
+
+.bounty-list .bounty-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--spacing-4);
+  align-items: center;
+}
+
+@media (max-width: 650px) {
+  .bounty-list .bounty-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Individual Bounty Card */
+.bounty-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-decoration: none;
+  color: var(--ink);
+  min-height: 240px;
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-3);
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xl);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--spacing-2) 0;
+  color: var(--ink);
+}
+
+.card-desc {
+  font-size: var(--text-sm);
+  color: #333333;
+  margin-bottom: var(--spacing-4);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--spacing-3);
+  border-top: 2px dashed var(--ink);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--muted-ink);
+}
+
+/* Detail View */
+.detail-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-8);
+  margin-bottom: var(--spacing-12);
+}
+
+@media (max-width: 860px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.detail-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.detail-header-block {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  flex-wrap: wrap;
+}
+
+.detail-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-3xl);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.detail-body {
+  font-size: var(--text-base);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+/* Claims List in Detail Page */
+.claims-section {
+  margin-top: var(--spacing-8);
+  border-top: var(--border-thick);
+  padding-top: var(--spacing-6);
+}
+
+.claim-item {
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-subtle);
+  padding: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+}
+
+.claim-item--accepted {
+  background-color: #EBFDF4;
+  border-left: 10px solid var(--mint);
+}
+
+.claim-item--rejected {
+  opacity: 0.6;
+  background-color: #F8F8F8;
+}
+
+/* Auth & Centered Form Layout */
+.form-center-container {
+  max-width: 580px;
+  margin: var(--spacing-10) auto var(--spacing-16) auto;
+  width: 100%;
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-2xl);
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+  margin-bottom: var(--spacing-4);
+}
+
+/* Empty State */
+.empty-box {
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  padding: var(--spacing-10) var(--spacing-6);
+  text-align: center;
+  margin: var(--spacing-8) 0;
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: var(--spacing-3);
+}
+
+.empty-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-2xl);
+  text-transform: uppercase;
+  margin: 0 0 var(--spacing-2) 0;
+}
+
+.empty-sub {
+  font-size: var(--text-base);
+  color: var(--muted-ink);
+  margin-bottom: var(--spacing-6);
+}
+
+/* Error Pages */
+.error-page-container {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8) var(--spacing-4);
+}
+
+.error-card {
+  max-width: 640px;
+  width: 100%;
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-hard);
+  padding: var(--spacing-10) var(--spacing-6);
+  text-align: center;
+}
+
+.error-code {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(4rem, 10vw, 7rem);
+  line-height: 1;
+  color: var(--pink);
+  margin: 0 0 var(--spacing-2) 0;
+  text-shadow: 4px 4px 0 var(--ink);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: var(--spacing-8) 0;
+  flex-wrap: wrap;
+}
+
+.page-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--spacing-3);
+  background-color: var(--white);
+  border: var(--border-thick);
+  box-shadow: var(--shadow-subtle);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.page-link:hover {
+  background-color: var(--yellow);
+}
+
+.page-link.current {
+  background-color: var(--ink);
+  color: var(--white);
+}

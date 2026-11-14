@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}403 Forbidden | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="error-page-container">
+  <div class="error-card">
+    <div class="error-code">403</div>
+    <h1 class="page-title">ACCESS DENIED</h1>
+    <p style="font-size: var(--text-lg); margin-bottom: var(--spacing-6);">
+      You don't have permission to touch this bounty, claim, or action. Only owners or moderators can proceed here.
+    </p>
+    <a href="/" class="btn btn-primary">BACK TO SAFETY</a>
+  </div>
+</div>
+{% endblock %}

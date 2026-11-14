@@ -1,0 +1,146 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Bounty Board | Campus Micro-Task Marketplace{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Campus micro-task marketplace for Indian university students. Post small tasks, claim bounties, get paid offline.{% endblock %}">
+  
+  <!-- OpenGraph / Social Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{% block og_title %}Bounty Board — Campus Micro-Bounties{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Got an Arduino bug, design request, or quick errand? Put a bounty on it.{% endblock %}">
+  <meta property="og:image" content="{% static 'img/og-card.png' %}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Bounty Board — Micro-tasks for campus hustlers">
+  
+  <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
+  
+  <!-- Neo-Brutalist CSS Cascade -->
+  <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+  <link rel="stylesheet" href="{% static 'css/components.css' %}">
+  <link rel="stylesheet" href="{% static 'css/pages.css' %}">
+  
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="layout-{{ bb_layout }}">
+  <!-- Accessible Skip Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Top Notification / Announcement Ticker -->
+  <div class="ticker-strip" role="region" aria-label="Campus announcements">
+    <div class="ticker-content">
+      <span>CAMPUS MICRO-TASK MARKETPLACE</span>
+      <span>•</span>
+      <span>SETTLE ALL PAYMENTS OFFLINE IN CASH OR UPI</span>
+      <span>•</span>
+      <span>NO MIDDLEMAN FEES</span>
+      <span>•</span>
+      <span>KEEP IT HONEST &amp; ON TIME</span>
+      <span>•</span>
+      <span>DEBUGGING, SLIDES, LAB REPORTS, ERRANDS</span>
+      <span>•</span>
+      <span>CAMPUS MICRO-TASK MARKETPLACE</span>
+    </div>
+  </div>
+
+  <!-- Navigation Bar -->
+  <header class="site-header" role="banner">
+    <div class="container nav-container">
+      <div style="display: flex; align-items: center; gap: var(--spacing-3);">
+        <a href="/" class="brand">
+          <span>BOUNTY BOARD</span>
+          <span class="brand-badge">₹ CAMPUS</span>
+        </a>
+      </div>
+
+      <nav class="nav-links" role="navigation" aria-label="Main Navigation">
+        <!-- Layout toggle cookie form (Server-side compatible, works with JS off) -->
+        <form action="{% url 'pages:set_layout' %}" method="post" class="layout-toggle-form" aria-label="Board display mode">
+          {% csrf_token %}
+          <button type="submit" name="layout" value="grid" class="layout-toggle-btn {% if bb_layout == 'grid' %}active{% endif %}" title="Grid view" aria-pressed="{% if bb_layout == 'grid' %}true{% else %}false{% endif %}">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            GRID
+          </button>
+          <button type="submit" name="layout" value="list" class="layout-toggle-btn {% if bb_layout == 'list' %}active{% endif %}" title="List view" aria-pressed="{% if bb_layout == 'list' %}true{% else %}false{% endif %}">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            LIST
+          </button>
+        </form>
+
+        {% if user.is_authenticated %}
+          <a href="/me/" class="btn btn-sm">MY DASHBOARD</a>
+          <a href="/bounties/new/" class="btn btn-sm btn-primary">+ POST BOUNTY</a>
+          <form action="/accounts/logout/" method="post" style="display: inline; margin: 0;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm">LOGOUT ({{ user.username }})</button>
+          </form>
+        {% else %}
+          <a href="/accounts/login/" class="btn btn-sm">LOGIN</a>
+          <a href="/accounts/signup/" class="btn btn-sm btn-primary">SIGN UP</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <!-- Flash Messages -->
+  <div class="container messages-container" aria-live="polite">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }}" role="alert">
+          <div>
+            <strong>{{ message.tags|upper }}:</strong> {{ message }}
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+
+  <!-- Main Content Landmark -->
+  <main id="main-content" class="container" role="main" style="flex: 1;">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="container">
+      <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--spacing-6); margin-bottom: var(--spacing-8);">
+        <div style="max-width: 400px;">
+          <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); margin: 0 0 var(--spacing-2) 0; color: var(--yellow);">
+            BOUNTY BOARD
+          </h2>
+          <p style="font-size: var(--text-sm); line-height: 1.4; color: #E5E5E5; margin: 0 0 var(--spacing-4) 0;">
+            Peer-to-peer campus bounty exchange. Built for quick code fixes, slides cleanup, hardware debugging, and real student work.
+          </p>
+          <div style="font-size: var(--text-xs); color: #B3B3B3; font-weight: 700;">
+            PAYMENTS: All bounties are settled strictly offline between students via cash or UPI. Zero commissions.
+          </div>
+        </div>
+
+        <div>
+          <div style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-sm); text-transform: uppercase; margin-bottom: var(--spacing-3); color: var(--white);">
+            Links &amp; Rules
+          </div>
+          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--spacing-2); font-size: var(--text-sm);">
+            <li><a href="{% url 'pages:about' %}">About Bounty Board</a></li>
+            <li><a href="{% url 'pages:guidelines' %}">Campus Guidelines</a></li>
+            <li><a href="{% url 'pages:terms' %}">Terms of Service</a></li>
+            <li><a href="{% url 'pages:privacy' %}">Privacy Policy</a></li>
+            {% if DEBUG %}
+              <li><a href="{% url 'pages:styleguide' %}" style="color: var(--pink);">[DEBUG] Styleguide</a></li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid #333333; padding-top: var(--spacing-4); display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--spacing-2); font-size: var(--text-xs); color: #888888;">
+        <div>&copy; 2026 Bounty Board. No cookies for ads, strictly sessions &amp; preferences.</div>
+        <div>Made with pure Django &amp; Neo-Brutalism.</div>
+      </div>
+    </div>
+  </footer>
+
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Campus Guidelines | Bounty Board{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: var(--spacing-8) auto;">
+  <div class="brutal-card brutal-card--yellow">
+    <span class="stamp-badge stamp-claimed" style="margin-bottom: var(--spacing-4);">RULES OF ENGAGEMENT</span>
+    <h1 class="page-title">CAMPUS CODE OF HONOR</h1>
+    
+    <div style="display: flex; flex-direction: column; gap: var(--spacing-4); font-size: var(--text-base); line-height: 1.6;">
+      <div style="background-color: var(--white); border: var(--border-thick); padding: var(--spacing-4);">
+        <strong>1. NO ACADEMIC DISHONESTY:</strong>
+        <p style="margin: 0.25rem 0 0 0;">Do not post requests for live exam assistance, proxy attendance, or graded quiz submissions. Homework debugging, tutoring, and proofreading are permitted.</p>
+      </div>
+
+      <div style="background-color: var(--white); border: var(--border-thick); padding: var(--spacing-4);">
+        <strong>2. HONOR THE REWARD:</strong>
+        <p style="margin: 0.25rem 0 0 0;">When a peer completes work meeting the agreed bounty description, pay the promised reward via UPI or cash immediately upon completion.</p>
+      </div>
+
+      <div style="background-color: var(--white); border: var(--border-thick); padding: var(--spacing-4);">
+        <strong>3. DELIVER ON TIME:</strong>
+        <p style="margin: 0.25rem 0 0 0;">If you claim a bounty and get accepted, prioritize it before the posted deadline. If you cannot finish, notify the poster promptly.</p>
+      </div>
+
+      <div style="background-color: var(--white); border: var(--border-thick); padding: var(--spacing-4);">
+        <strong>4. SAFE CAMPUS MEETUPS:</strong>
+        <p style="margin: 0.25rem 0 0 0;">For offline handoffs (hardware, notes, campus errands), meet in well-lit public campus spaces (library, cafeteria, student activity center).</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

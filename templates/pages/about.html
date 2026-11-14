@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}About | Bounty Board{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: var(--spacing-8) auto;">
+  <div class="brutal-card">
+    <span class="stamp-badge stamp-open" style="margin-bottom: var(--spacing-4);">CAMPUS EXCHANGE</span>
+    <h1 class="page-title" style="font-size: var(--text-3xl);">WHAT IS BOUNTY BOARD?</h1>
+    
+    <p style="font-size: var(--text-lg); line-height: 1.6;">
+      Bounty Board connects university students who need quick tasks solved with peers who have the skills and time.
+      No middlemen. No transaction fees. No corporate fluff.
+    </p>
+
+    <div style="background-color: var(--yellow); border: var(--border-thick); padding: var(--spacing-4); margin: var(--spacing-6) 0;">
+      <h2 style="font-family: var(--font-display); font-size: var(--text-xl); margin: 0 0 var(--spacing-2) 0;">
+        HOW IT WORKS
+      </h2>
+      <ol style="margin: 0; padding-left: var(--spacing-5); font-weight: 700; line-height: 1.8;">
+        <li><strong>Post a Bounty:</strong> Describe the task, set a reward (₹10 to ₹10,000) and pick a strict deadline.</li>
+        <li><strong>Review Claims:</strong> Classmates send their contact handle and offer to help.</li>
+        <li><strong>Accept One:</strong> The poster picks exactly ONE claimant. Other pending claims get rejected automatically.</li>
+        <li><strong>Settle Offline:</strong> Connect via WhatsApp/email, finish the work in person or online, and pay via UPI or cash.</li>
+        <li><strong>Mark Done:</strong> The poster marks the bounty complete. Reputation built!</li>
+      </ol>
+    </div>
+
+    <div style="display: flex; gap: var(--spacing-4); flex-wrap: wrap;">
+      <a href="/" class="btn btn-primary">EXPLORE BOUNTIES</a>
+      <a href="/bounties/new/" class="btn">+ POST A TASK</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}500 Server Error | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="error-page-container">
+  <div class="error-card">
+    <div class="error-code">500</div>
+    <h1 class="page-title">CIRCUIT BLOWN</h1>
+    <p style="font-size: var(--text-lg); margin-bottom: var(--spacing-6);">
+      Something failed on our end. Our campus servers encountered an unhandled exception. We've logged it.
+    </p>
+    <a href="/" class="btn btn-primary">RELOAD THE BOARD</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Design System Styleguide | Bounty Board{% endblock %}
+
+{% block content %}
+<div style="padding: var(--spacing-8) 0;">
+  <div style="border-bottom: var(--border-thick); padding-bottom: var(--spacing-6); margin-bottom: var(--spacing-8);">
+    <span class="stamp-badge stamp-claimed" style="margin-bottom: var(--spacing-2);">DEBUG ONLY</span>
+    <h1 class="page-title" style="font-size: var(--text-huge); margin-bottom: var(--spacing-2);">NEO-BRUTALIST STYLEGUIDE</h1>
+    <p style="font-size: var(--text-lg); margin: 0; color: var(--muted-ink);">
+      Design system spec: 3px solid ink borders, 0px border-radius, hard 6px 6px drop shadows, fluid high-contrast typography.
+    </p>
+  </div>
+
+  <!-- 1. Color Palette Tokens -->
+  <section style="margin-bottom: var(--spacing-12);">
+    <h2 class="page-title">1. Color Palette Tokens</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--spacing-4);">
+      <div style="background-color: var(--bg-cream); border: var(--border-thick); padding: var(--spacing-4); box-shadow: var(--shadow-hard);">
+        <strong>Cream BG</strong><br><code>#FFF6DC</code>
+      </div>
+      <div style="background-color: var(--yellow); border: var(--border-thick); padding: var(--spacing-4); box-shadow: var(--shadow-hard);">
+        <strong>Flat Yellow</strong><br><code>#FFD60A</code>
+      </div>
+      <div style="background-color: var(--pink); color: var(--white); border: var(--border-thick); padding: var(--spacing-4); box-shadow: var(--shadow-hard);">
+        <strong>Brutal Pink</strong><br><code>#FF5FA2</code>
+      </div>
+      <div style="background-color: var(--mint); border: var(--border-thick); padding: var(--spacing-4); box-shadow: var(--shadow-hard);">
+        <strong>Campus Mint</strong><br><code>#5CE1A8</code>
+      </div>
+      <div style="background-color: var(--white); border: var(--border-thick); padding: var(--spacing-4); box-shadow: var(--shadow-hard);">
+        <strong>Pure White</strong><br><code>#FFFFFF</code>
+      </div>
+      <div style="background-color: var(--ink); color: var(--white); border: var(--border-thick); padding: var(--spacing-4); box-shadow: var(--shadow-hard);">
+        <strong>Deep Ink</strong><br><code>#111111</code>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Typography -->
+  <section style="margin-bottom: var(--spacing-12);">
+    <h2 class="page-title">2. Typography Hierarchy</h2>
+    <div class="brutal-card">
+      <div style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-3xl); line-height: 1; margin-bottom: var(--spacing-3);">
+        Bricolage Grotesque Display 800
+      </div>
+      <div style="font-family: var(--font-body); font-size: var(--text-base); margin-bottom: var(--spacing-4);">
+        Archivo Body 400/500/700 — Clear, high legibility for technical details, instructions, deadlines, and bounty rewards.
+      </div>
+      <div style="display: flex; flex-direction: column; gap: var(--spacing-2);">
+        <span style="font-size: var(--text-huge); font-family: var(--font-display); font-weight: 800;">Huge H1 ₹5,000</span>
+        <span style="font-size: var(--text-2xl); font-family: var(--font-display); font-weight: 800;">Section Heading H2</span>
+        <span style="font-size: var(--text-xl); font-family: var(--font-display); font-weight: 800;">Card Header H3</span>
+        <span style="font-size: var(--text-base);">Standard Body Text 16-18px</span>
+        <span style="font-size: var(--text-xs); color: var(--muted-ink);">Small Metadata &amp; Timestamps</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Buttons & Controls -->
+  <section style="margin-bottom: var(--spacing-12);">
+    <h2 class="page-title">3. Buttons &amp; Interactive Controls</h2>
+    <div class="brutal-card" style="display: flex; flex-wrap: wrap; gap: var(--spacing-4); align-items: center;">
+      <button class="btn btn-primary">Primary Action</button>
+      <button class="btn">Default White</button>
+      <button class="btn btn-accent">Pink Accent</button>
+      <button class="btn btn-mint">Mint Success</button>
+      <button class="btn btn-danger">Danger Alert</button>
+      <button class="btn btn-sm">Small Button</button>
+      <button class="btn btn-sm btn-primary">+ Post Bounty</button>
+    </div>
+  </section>
+
+  <!-- 4. Stickers, Badges & Chips -->
+  <section style="margin-bottom: var(--spacing-12);">
+    <h2 class="page-title">4. Stickers, Badges &amp; Chips</h2>
+    <div class="brutal-card" style="display: flex; flex-direction: column; gap: var(--spacing-6);">
+      <div>
+        <h3 style="font-family: var(--font-display); margin: 0 0 var(--spacing-3) 0;">Reward Stickers (-3deg tilt)</h3>
+        <div style="display: flex; gap: var(--spacing-4); flex-wrap: wrap;">
+          <span class="sticker-reward">₹250</span>
+          <span class="sticker-reward" style="background-color: var(--mint);">₹1,200</span>
+          <span class="sticker-reward" style="background-color: var(--pink); color: var(--white);">₹5,000</span>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-family: var(--font-display); margin: 0 0 var(--spacing-3) 0;">Status Rubber-Stamps (+2deg tilt)</h3>
+        <div style="display: flex; gap: var(--spacing-3); flex-wrap: wrap;">
+          <span class="stamp-badge stamp-open">OPEN</span>
+          <span class="stamp-badge stamp-claimed">CLAIMED</span>
+          <span class="stamp-badge stamp-done">DONE</span>
+          <span class="stamp-badge stamp-cancelled">CANCELLED</span>
+          <span class="stamp-badge stamp-expired">EXPIRED</span>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-family: var(--font-display); margin: 0 0 var(--spacing-3) 0;">Category Chips</h3>
+        <div style="display: flex; gap: var(--spacing-2); flex-wrap: wrap;">
+          <span class="chip-category" data-cat="Tech">TECH</span>
+          <span class="chip-category" data-cat="Design">DESIGN</span>
+          <span class="chip-category" data-cat="Writing">WRITING</span>
+          <span class="chip-category" data-cat="Academics">ACADEMICS</span>
+          <span class="chip-category" data-cat="Errands">ERRANDS</span>
+          <span class="chip-category" data-cat="Other">OTHER</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Form Elements & Inline Errors -->
+  <section style="margin-bottom: var(--spacing-12);">
+    <h2 class="page-title">5. Form Controls &amp; Pink Block Errors</h2>
+    <div class="brutal-card" style="max-width: 600px;">
+      <div class="form-group">
+        <label class="form-label" for="sample-input">Bounty Title</label>
+        <input type="text" id="sample-input" class="input-text" value="Fix my broken Verilog simulation">
+        <div class="field-help">Keep it short, direct and specific (8 to 80 chars).</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="sample-category">Category</label>
+        <select id="sample-category" class="input-select">
+          <option>Tech (Code, Hardware, Labs)</option>
+          <option>Design (Posters, UI, Pitch Decks)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="sample-err">Invalid Reward Amount</label>
+        <input type="number" id="sample-err" class="input-text" value="5">
+        <div class="field-error">
+          Reward must be between ₹10 and ₹10,000.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Alert Messages -->
+  <section style="margin-bottom: var(--spacing-12);">
+    <h2 class="page-title">6. Alert Messages</h2>
+    <div style="display: flex; flex-direction: column; gap: var(--spacing-3);">
+      <div class="alert alert-success">
+        <div><strong>SUCCESS:</strong> Claim accepted! You can now reach the claimant directly.</div>
+      </div>
+      <div class="alert alert-danger">
+        <div><strong>ERROR:</strong> You cannot claim your own bounty.</div>
+      </div>
+      <div class="alert alert-warning">
+        <div><strong>NOTICE:</strong> Settle offline. Pay in cash or UPI upon delivery.</div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
