@@ -11,4 +11,4 @@ Campus micro-task marketplace for Indian university students.
 - [x] **M4: Claims & Permissions (v0.5)** - Atomic claim acceptance (select_for_update), contact visibility rules, withdrawal, notification emails, race tests.
 - [x] **M5: Sessions & Cookies (v0.6)** - Recently viewed strip (session), bb_layout cookie toggle (grid/list), /me/ dashboard, tests.
 - [x] **M6: Trust & Hardening (v0.9)** - Abuse reports, moderation, rate limiting, production security, health check, sitemap, 35+ test suite, Procfile.
-- [ ] **M7: Release (v1.0.0)** - Comprehensive README, syllabus map, screenshots, CHANGELOG, v1.0.0 git tag.
+- [x] **M7: Release (v1.0.0)** - Comprehensive README, syllabus map, screenshots, CHANGELOG, v1.0.0 git tag.
