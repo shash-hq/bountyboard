@@ -104,8 +104,8 @@ class Bounty(models.Model):
         if self.description and len(self.description) > 1000:
             raise ValidationError({"description": "Description cannot exceed 1000 characters."})
 
-        # Deadline validation for new or modified deadline
-        if self.deadline and self.pk is None and self.deadline <= timezone.now():
+        # Deadline validation for new OPEN bounties
+        if self.deadline and self.pk is None and self.status == BountyStatus.OPEN and self.deadline <= timezone.now():
             raise ValidationError({"deadline": "Deadline must be in the future."})
 
         # Max 5 OPEN bounties per user rule (enforced on new bounties)

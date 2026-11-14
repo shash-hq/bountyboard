@@ -63,6 +63,17 @@ def verify():
             assert "Sign Up" in page.title()
             assert page.locator("input[name='email']").is_visible()
 
+            # Test Live Board with bounties
+            page.goto("http://127.0.0.1:8089/")
+            assert "Bounty Board" in page.title()
+            assert page.locator(".bounty-card").count() >= 1
+
+            # Test first bounty detail
+            detail_link = page.locator(".bounty-card a").first.get_attribute("href")
+            page.goto(f"http://127.0.0.1:8089{detail_link}")
+            assert page.locator(".detail-title").is_visible()
+            assert page.locator(".sticker-reward").is_visible()
+
             print(f"[{label.upper()} {width}px] UI verified successfully.")
             context.close()
 

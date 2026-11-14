@@ -26,6 +26,8 @@ if env_file.exists():
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+if "testserver" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("testserver")
 ALLOWED_EMAIL_DOMAIN = env("ALLOWED_EMAIL_DOMAIN")
 
 # Application definition

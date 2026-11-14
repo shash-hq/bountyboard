@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}
+  {% if action == 'edit' %}Edit Bounty: {{ bounty.title }}{% else %}Post a New Bounty{% endif %} | Bounty Board
+{% endblock %}
+
+{% block content %}
+<div class="form-center-container" style="max-width: 680px;">
+  <div class="brutal-card brutal-card--yellow">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--spacing-4);">
+      <div>
+        <h1 class="page-title" style="margin: 0;">
+          {% if action == 'edit' %}EDIT BOUNTY{% else %}POST A BOUNTY{% endif %}
+        </h1>
+        <p style="font-size: var(--text-sm); margin: var(--spacing-1) 0 0 0; color: var(--muted-ink);">
+          Be specific about inputs, expected deliverables, and time required.
+        </p>
+      </div>
+      <span class="stamp-badge stamp-open">₹ REWARD</span>
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="field-error" style="margin-bottom: var(--spacing-4);">
+        {% for error in form.non_field_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label" for="id_title">Bounty Title (8-80 chars)</label>
+        {{ form.title }}
+        {% if form.title.help_text %}<div class="field-help">{{ form.title.help_text }}</div>{% endif %}
+        {% for error in form.title.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-4);">
+        <div class="form-group">
+          <label class="form-label" for="id_category">Category</label>
+          {{ form.category }}
+          {% for error in form.category.errors %}
+            <div class="field-error">{{ error }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="id_reward">Reward (₹10 - ₹10,000)</label>
+          {{ form.reward }}
+          {% if form.reward.help_text %}<div class="field-help">{{ form.reward.help_text }}</div>{% endif %}
+          {% for error in form.reward.errors %}
+            <div class="field-error">{{ error }}</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="id_deadline">Completion Deadline (Must be future)</label>
+        {{ form.deadline }}
+        {% if form.deadline.help_text %}<div class="field-help">{{ form.deadline.help_text }}</div>{% endif %}
+        {% for error in form.deadline.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="id_description">Task Description &amp; Deliverables (20-1000 chars)</label>
+        {{ form.description }}
+        {% if form.description.help_text %}<div class="field-help">{{ form.description.help_text }}</div>{% endif %}
+        {% for error in form.description.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div style="background-color: var(--white); border: 2px solid var(--ink); padding: var(--spacing-3); font-size: var(--text-xs); margin-bottom: var(--spacing-5); font-weight: 700;">
+        ⚠️ IMPORTANT: When work is delivered by your accepted claimant, you must pay the agreed reward offline in Cash or UPI. No payments occur through this website.
+      </div>
+
+      <div style="display: flex; gap: var(--spacing-3);">
+        <button type="submit" class="btn btn-primary" style="flex: 2;">
+          {% if action == 'edit' %}SAVE CHANGES &rarr;{% else %}PUBLISH BOUNTY &rarr;{% endif %}
+        </button>
+        <a href="{% if action == 'edit' %}/bounties/{{ bounty.pk }}/{{ bounty.slug }}/{% else %}/{% endif %}" class="btn" style="flex: 1;">
+          CANCEL
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% load bounty_tags %}
+
+{% block title %}{{ bounty.title }} (₹{{ bounty.reward }}) | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="detail-layout">
+  
+  <!-- LEFT: Main Bounty Details & Claims List -->
+  <div class="detail-main">
+    <div class="brutal-card brutal-card--white">
+      <div class="detail-header-block">
+        <div>
+          <span class="chip-category" data-cat="{{ bounty.category }}" style="margin-bottom: var(--spacing-2);">
+            {{ bounty.category }}
+          </span>
+          <h1 class="detail-title">{{ bounty.title }}</h1>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: var(--spacing-3);">
+          <span class="sticker-reward">₹{{ bounty.reward }}</span>
+          {% if bounty.is_expired %}
+            <span class="stamp-badge stamp-expired">EXPIRED</span>
+          {% elif bounty.status == 'OPEN' %}
+            <span class="stamp-badge stamp-open">OPEN</span>
+          {% elif bounty.status == 'CLAIMED' %}
+            <span class="stamp-badge stamp-claimed">CLAIMED</span>
+          {% elif bounty.status == 'DONE' %}
+            <span class="stamp-badge stamp-done">DONE</span>
+          {% elif bounty.status == 'CANCELLED' %}
+            <span class="stamp-badge stamp-cancelled">CANCELLED</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="display: flex; gap: var(--spacing-4); flex-wrap: wrap; margin-top: var(--spacing-3); font-size: var(--text-xs); color: var(--muted-ink); border-bottom: 2px dashed var(--ink); padding-bottom: var(--spacing-3);">
+        <div>Posted by: <strong>{{ bounty.poster.username }}</strong></div>
+        <div>Created: <strong>{{ bounty.created_at|date:"M d, Y H:i" }}</strong></div>
+        <div>Deadline: <strong>{{ bounty.deadline|date:"M d, Y H:i" }} ({{ bounty.deadline|time_left }})</strong></div>
+      </div>
+
+      <!-- Description Body -->
+      <div style="margin-top: var(--spacing-5);">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-lg); text-transform: uppercase; margin: 0 0 var(--spacing-2) 0;">
+          TASK BRIEF &amp; DELIVERABLES
+        </h2>
+        <div class="detail-body">
+          {{ bounty.description }}
+        </div>
+      </div>
+
+      <!-- Offline Notice -->
+      <div style="background-color: var(--yellow); border: 2px solid var(--ink); padding: var(--spacing-3); margin-top: var(--spacing-6); font-size: var(--text-sm); font-weight: 700; display: flex; align-items: center; gap: var(--spacing-2);">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        SETTLE OFFLINE: Once work is inspected, the poster pays ₹{{ bounty.reward }} in cash or UPI directly to the solver.
+      </div>
+
+      <!-- Poster Actions -->
+      {% if is_poster %}
+        <div style="margin-top: var(--spacing-6); padding-top: var(--spacing-4); border-top: var(--border-thick); display: flex; gap: var(--spacing-3); flex-wrap: wrap; align-items: center;">
+          <strong style="font-size: var(--text-xs); text-transform: uppercase;">Owner Controls:</strong>
+          {% if can_edit %}
+            <a href="/bounties/{{ bounty.pk }}/edit/" class="btn btn-sm">EDIT BOUNTY</a>
+            <form action="/bounties/{{ bounty.pk }}/cancel/" method="post" style="display: inline; margin: 0;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Cancel this bounty? This cannot be undone.');">CANCEL BOUNTY</button>
+            </form>
+          {% endif %}
+
+          {% if bounty.status == 'CLAIMED' %}
+            <form action="/bounties/{{ bounty.pk }}/done/" method="post" style="display: inline; margin: 0;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-mint" onclick="return confirm('Confirm offline settlement complete and mark this bounty as DONE?');">MARK AS DONE</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- CLAIMS SECTION -->
+    {% if is_poster or perms.bounties.moderate %}
+      <div class="claims-section">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); text-transform: uppercase; margin-bottom: var(--spacing-4);">
+          SUBMITTED CLAIMS ({{ claims|length }})
+        </h2>
+
+        {% if claims %}
+          {% for c in claims %}
+            <div class="claim-item {% if c.status == 'ACCEPTED' %}claim-item--accepted{% elif c.status == 'REJECTED' %}claim-item--rejected{% endif %}">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-2); margin-bottom: var(--spacing-2);">
+                <div>
+                  <strong>{{ c.claimant.username }}</strong>
+                  <span style="font-size: var(--text-xs); color: var(--muted-ink); margin-left: var(--spacing-2);">
+                    Submitted {{ c.created_at|date:"M d, H:i" }}
+                  </span>
+                </div>
+                <div>
+                  {% if c.status == 'ACCEPTED' %}
+                    <span class="stamp-badge stamp-open">ACCEPTED SOLVER</span>
+                  {% elif c.status == 'PENDING' %}
+                    <span class="stamp-badge stamp-claimed">PENDING</span>
+                  {% elif c.status == 'REJECTED' %}
+                    <span class="stamp-badge stamp-cancelled">REJECTED</span>
+                  {% elif c.status == 'WITHDRAWN' %}
+                    <span class="stamp-badge stamp-expired">WITHDRAWN</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- Message -->
+              <p style="font-size: var(--text-sm); line-height: 1.5; margin: var(--spacing-2) 0; background: var(--bg-cream); border: 1.5px solid var(--ink); padding: var(--spacing-3);">
+                {{ c.message }}
+              </p>
+
+              <!-- Contact handle: visible only to poster / moderator -->
+              <div style="font-size: var(--text-xs); font-weight: 700; color: var(--ink); margin-bottom: var(--spacing-3);">
+                📞 Contact Handle: <u>{{ c.contact }}</u> &bull; Email: <u>{{ c.claimant.email }}</u>
+              </div>
+
+              <!-- Accept / Reject Actions for poster -->
+              {% if is_poster and bounty.status == 'OPEN' and not bounty.is_expired and c.status == 'PENDING' %}
+                <div style="display: flex; gap: var(--spacing-2); margin-top: var(--spacing-3);">
+                  <form action="/claims/{{ c.pk }}/accept/" method="post" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-mint" onclick="return confirm('Accept this claim? All other pending claims will be rejected automatically.');">
+                      ACCEPT THIS CLAIM
+                    </button>
+                  </form>
+                  <form action="/claims/{{ c.pk }}/reject/" method="post" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm" onclick="return confirm('Reject this claim?');">
+                      REJECT
+                    </button>
+                  </form>
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-box" style="margin: 0; padding: var(--spacing-6);">
+            <div class="empty-title" style="font-size: var(--text-lg);">NO CLAIMS YET</div>
+            <div class="empty-sub" style="font-size: var(--text-sm);">Classmates will pitch and provide their WhatsApp contacts here.</div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+
+  <!-- RIGHT: Claim Box / Status Card / Report -->
+  <div class="detail-sidebar">
+    
+    <!-- IF USER ALREADY CLAIMED -->
+    {% if user_claim %}
+      <div class="brutal-card {% if user_claim.status == 'ACCEPTED' %}brutal-card--mint{% else %}brutal-card--yellow{% endif %}">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-xl); margin-top: 0;">
+          YOUR CLAIM STATUS
+        </h2>
+        <div style="margin-bottom: var(--spacing-3);">
+          {% if user_claim.status == 'ACCEPTED' %}
+            <span class="stamp-badge stamp-open" style="font-size: var(--text-sm);">ACCEPTED SOLVER 🎉</span>
+            <div style="margin-top: var(--spacing-4); background-color: var(--white); border: 2px solid var(--ink); padding: var(--spacing-3); font-size: var(--text-sm);">
+              <strong>POSTER EMAIL:</strong><br>
+              <a href="mailto:{{ bounty.poster.email }}" style="color: var(--ink); font-weight: 800;">{{ bounty.poster.email }}</a>
+              <div style="font-size: var(--text-xs); color: var(--muted-ink); margin-top: 4px;">
+                Reach out immediately and agree on deliverable handoff before the deadline!
+              </div>
+            </div>
+          {% elif user_claim.status == 'PENDING' %}
+            <span class="stamp-badge stamp-claimed">PENDING POSTER REVIEW</span>
+            <p style="font-size: var(--text-sm); margin: var(--spacing-3) 0;">
+              The poster is reviewing claims. If accepted, you will get access to their direct contact.
+            </p>
+            <form action="/claims/{{ user_claim.pk }}/withdraw/" method="post">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-danger btn-block" onclick="return confirm('Withdraw your claim?');">
+                WITHDRAW MY CLAIM
+              </button>
+            </form>
+          {% elif user_claim.status == 'REJECTED' %}
+            <span class="stamp-badge stamp-cancelled">CLAIM REJECTED</span>
+            <p style="font-size: var(--text-sm); margin-top: var(--spacing-2);">
+              The poster has chosen another peer or rejected this claim.
+            </p>
+          {% elif user_claim.status == 'WITHDRAWN' %}
+            <span class="stamp-badge stamp-expired">CLAIM WITHDRAWN</span>
+          {% endif %}
+        </div>
+      </div>
+
+    <!-- IF USER CAN CLAIM -->
+    {% elif claim_form %}
+      <div class="brutal-card brutal-card--mint">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-xl); margin-top: 0; margin-bottom: var(--spacing-2);">
+          CLAIM THIS BOUNTY
+        </h2>
+        <p style="font-size: var(--text-xs); color: var(--muted-ink); margin-bottom: var(--spacing-4);">
+          Reward: <strong>₹{{ bounty.reward }}</strong> upon offline completion.
+        </p>
+
+        <form method="post" action="/bounties/{{ bounty.pk }}/claim/" novalidate>
+          {% csrf_token %}
+
+          <div class="form-group">
+            <label class="form-label" for="id_message">Your Pitch (10-500 chars)</label>
+            {{ claim_form.message }}
+            <div class="field-help">Highlight why you can deliver this fast &amp; accurately.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="id_contact">Your Contact Handle</label>
+            {{ claim_form.contact }}
+            <div class="field-help">WhatsApp phone or campus email (visible ONLY to the poster).</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">
+            SUBMIT CLAIM &rarr;
+          </button>
+        </form>
+      </div>
+
+    {% elif not user.is_authenticated %}
+      <div class="brutal-card brutal-card--yellow">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-xl); margin-top: 0;">
+          WANT TO SOLVE THIS?
+        </h2>
+        <p style="font-size: var(--text-sm); margin-bottom: var(--spacing-4);">
+          Log in with your campus account to claim this ₹{{ bounty.reward }} bounty.
+        </p>
+        <a href="/accounts/login/?next=/bounties/{{ bounty.pk }}/{{ bounty.slug }}/" class="btn btn-primary btn-block">
+          LOGIN TO CLAIM &rarr;
+        </a>
+      </div>
+    {% endif %}
+
+    <!-- REPORT CARD -->
+    {% if report_form %}
+      <div class="brutal-card brutal-card--white" style="margin-top: var(--spacing-4);">
+        <details>
+          <summary style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-sm); text-transform: uppercase; cursor: pointer;">
+            FLAG THIS LISTING
+          </summary>
+          <div style="margin-top: var(--spacing-3);">
+            <form method="post" action="/bounties/{{ bounty.pk }}/report/">
+              {% csrf_token %}
+              <div class="form-group" style="margin-bottom: var(--spacing-2);">
+                <label class="form-label" for="id_reason">Reason</label>
+                {{ report_form.reason }}
+              </div>
+              <div class="form-group" style="margin-bottom: var(--spacing-3);">
+                <label class="form-label" for="id_note">Details</label>
+                {{ report_form.note }}
+              </div>
+              <button type="submit" class="btn btn-sm btn-danger btn-block">REPORT TO MODERATORS</button>
+            </form>
+          </div>
+        </details>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
