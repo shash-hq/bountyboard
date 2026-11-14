@@ -1,7 +1,7 @@
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
-from .models import Bounty, BountyStatus, Claim, ClaimStatus
+from .models import Bounty, BountyStatus, Claim, ClaimStatus, Report
 from .notifications import (
     send_claim_accepted_notification,
     send_claim_rejected_notification,
@@ -131,3 +131,38 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
     bounty.claims.filter(status=ClaimStatus.PENDING).update(status=ClaimStatus.REJECTED)
     bounty.save(update_fields=["status", "updated_at"])
     return bounty
+
+
+def hide_bounty(bounty_id: int, user, is_hidden: bool = True) -> Bounty:
+    """Moderator toggles visibility of a bounty."""
+    if not (user.is_authenticated and (user.has_perm("bounties.moderate") or user.is_staff)):
+        raise PermissionDenied("You do not have permission to moderate bounties.")
+
+    try:
+        bounty = Bounty.objects.get(id=bounty_id)
+    except Bounty.DoesNotExist:
+        raise ValidationError("Bounty does not exist.")
+
+    bounty.is_hidden = is_hidden
+    bounty.save(update_fields=["is_hidden", "updated_at"])
+    return bounty
+
+
+def resolve_report(report_id: int, user, hide_bounty_flag: bool = False) -> Report:
+    """Moderator resolves an abuse report, optionally hiding the associated bounty."""
+    if not (user.is_authenticated and (user.has_perm("bounties.moderate") or user.is_staff)):
+        raise PermissionDenied("You do not have permission to moderate reports.")
+
+    try:
+        report = Report.objects.select_related("bounty").get(id=report_id)
+    except Report.DoesNotExist:
+        raise ValidationError("Report does not exist.")
+
+    report.resolved = True
+    report.save(update_fields=["resolved"])
+
+    if hide_bounty_flag:
+        report.bounty.is_hidden = True
+        report.bounty.save(update_fields=["is_hidden", "updated_at"])
+
+    return report

@@ -258,6 +258,27 @@
       </div>
     {% endif %}
 
+    <!-- MODERATOR CONTROLS -->
+    {% if perms.bounties.moderate or user.is_staff %}
+      <div class="brutal-card brutal-card--pink" style="margin-top: var(--spacing-4);">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-lg); margin-top: 0;">
+          MODERATOR TOOLS
+        </h2>
+        <div style="font-size: var(--text-sm); margin-bottom: var(--spacing-3);">
+          Status: <strong>{% if bounty.is_hidden %}HIDDEN FROM BOARD{% else %}PUBLICLY VISIBLE{% endif %}</strong>
+        </div>
+        <form method="post" action="{% url 'bounties:toggle_hide' pk=bounty.pk %}" style="margin-bottom: var(--spacing-2);">
+          {% csrf_token %}
+          {% if bounty.is_hidden %}
+            <button type="submit" class="btn btn-sm btn-mint btn-block">UNHIDE BOUNTY</button>
+          {% else %}
+            <button type="submit" class="btn btn-sm btn-block" style="background: var(--ink); color: var(--white);">HIDE BOUNTY</button>
+          {% endif %}
+        </form>
+        <a href="{% url 'bounties:mod_queue' %}" class="btn btn-sm btn-secondary btn-block">OPEN MOD QUEUE &rarr;</a>
+      </div>
+    {% endif %}
+
   </div>
 </div>
 {% endblock %}

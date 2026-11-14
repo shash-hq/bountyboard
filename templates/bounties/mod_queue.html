@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Moderator Queue | Bounty Board{% endblock %}
+
+{% block content %}
+<div style="padding-top: var(--spacing-6); padding-bottom: var(--spacing-12);">
+  
+  <!-- Header Card -->
+  <div class="brutal-card brutal-card--pink" style="margin-bottom: var(--spacing-8);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-4);">
+      <div>
+        <div style="display: flex; align-items: center; gap: var(--spacing-3); margin-bottom: var(--spacing-2);">
+          <h1 class="page-title" style="margin: 0; font-size: var(--text-3xl);">
+            CAMPUS MODERATION QUEUE
+          </h1>
+          <span class="stamp-badge stamp-claimed">STAFF ONLY</span>
+        </div>
+        <p style="margin: 0; font-size: var(--text-sm);">
+          Review reported listings and manage board safety. You have <strong>bounties.moderate</strong> permissions.
+        </p>
+      </div>
+      <div style="display: flex; gap: var(--spacing-3); flex-wrap: wrap;">
+        <a href="/admin/bounties/report/" class="btn btn-sm btn-white">OPEN DJANGO ADMIN &rarr;</a>
+        <a href="/me/" class="btn btn-sm btn-secondary">&larr; MY DASHBOARD</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: var(--spacing-10);">
+    
+    <!-- SECTION 1: Unresolved Reports -->
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4); border-bottom: var(--border-thick); padding-bottom: var(--spacing-2);">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); margin: 0;">
+          UNRESOLVED ABUSE REPORTS ({{ unresolved_reports|length }})
+        </h2>
+        <span style="font-size: var(--text-sm); font-weight: 700;">Needs Review</span>
+      </div>
+
+      {% if unresolved_reports %}
+        <div style="display: flex; flex-direction: column; gap: var(--spacing-4);">
+          {% for r in unresolved_reports %}
+            <div class="brutal-card brutal-card--white">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-3); margin-bottom: var(--spacing-3);">
+                <div>
+                  <span class="chip-category" style="background-color: var(--pink); color: var(--white); margin-right: var(--spacing-2);">
+                    REASON: {{ r.get_reason_display|upper }}
+                  </span>
+                  <a href="/bounties/{{ r.bounty.pk }}/{{ r.bounty.slug }}/" style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-xl); color: var(--ink); text-decoration: none;">
+                    {{ r.bounty.title }}
+                  </a>
+                </div>
+                <div>
+                  <span class="sticker-reward">₹{{ r.bounty.reward }}</span>
+                </div>
+              </div>
+
+              {% if r.note %}
+                <div style="background-color: var(--cream); border: 2px solid var(--ink); padding: var(--spacing-3); margin-bottom: var(--spacing-3); font-size: var(--text-sm);">
+                  <strong>Reporter Note:</strong> {{ r.note }}
+                </div>
+              {% endif %}
+
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-3); padding-top: var(--spacing-3); border-top: 2px dashed var(--ink); font-size: var(--text-xs); color: var(--muted-ink);">
+                <div>
+                  Reported by <strong>@{{ r.reporter.username }}</strong> on {{ r.created_at|date:"M d, Y H:i" }} &bull; Poster: <strong>@{{ r.bounty.poster.username }}</strong>
+                </div>
+
+                <div style="display: flex; gap: var(--spacing-2);">
+                  <form action="{% url 'bounties:resolve_report' pk=r.pk %}" method="post" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="hide_and_resolve">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Hide this bounty from the public board and mark report resolved?');">
+                      RESOLVE &amp; HIDE BOUNTY
+                    </button>
+                  </form>
+
+                  <form action="{% url 'bounties:resolve_report' pk=r.pk %}" method="post" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="resolve">
+                    <button type="submit" class="btn btn-sm btn-mint" onclick="return confirm('Dismiss report and keep bounty visible?');">
+                      DISMISS (KEEP VISIBLE)
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">
+          <div class="empty-title">QUEUE IS CLEAN</div>
+          <div class="empty-sub">No pending abuse reports from students. Good campus vibes!</div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- SECTION 2: Hidden Bounties -->
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4); border-bottom: var(--border-thick); padding-bottom: var(--spacing-2);">
+        <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); margin: 0;">
+          HIDDEN BOUNTIES ({{ hidden_bounties|length }})
+        </h2>
+        <span style="font-size: var(--text-sm); font-weight: 700;">Not on Public Board</span>
+      </div>
+
+      {% if hidden_bounties %}
+        <div style="display: flex; flex-direction: column; gap: var(--spacing-4);">
+          {% for b in hidden_bounties %}
+            <div class="brutal-card brutal-card--yellow">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-3);">
+                <div>
+                  <span class="chip-category" data-cat="{{ b.category }}" style="margin-right: var(--spacing-2);">{{ b.category }}</span>
+                  <a href="/bounties/{{ b.pk }}/{{ b.slug }}/" style="font-family: var(--font-display); font-weight: 800; font-size: var(--text-xl); color: var(--ink); text-decoration: none;">
+                    {{ b.title }}
+                  </a>
+                  <div style="font-size: var(--text-xs); color: var(--muted-ink); margin-top: 4px;">
+                    Posted by @{{ b.poster.username }} &bull; ₹{{ b.reward }} &bull; {{ b.claim_count }} claim(s)
+                  </div>
+                </div>
+
+                <div>
+                  <form action="{% url 'bounties:toggle_hide' pk=b.pk %}" method="post" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-mint" onclick="return confirm('Unhide this bounty and restore to public board?');">
+                      UNHIDE &amp; RESTORE
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">
+          <div class="empty-title">NO HIDDEN BOUNTIES</div>
+          <div class="empty-sub">All active student bounties are publicly visible.</div>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

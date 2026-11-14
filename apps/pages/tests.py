@@ -17,6 +17,15 @@ class FoundationAndPageTests(TestCase):
         self.assertIn("User-agent: *", response.content.decode("utf-8"))
         self.assertIn("Sitemap:", response.content.decode("utf-8"))
 
+    def test_sitemap_xml(self):
+        """Verify sitemap.xml returns 200 and valid xml markup."""
+        response = self.client.get(reverse("sitemap"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/xml")
+        content = response.content.decode("utf-8")
+        self.assertIn("<urlset", content)
+        self.assertIn("http://testserver/about/", content)
+
     def test_informational_pages(self):
         """Verify about, terms, privacy, guidelines return 200 OK."""
         for name in ["about", "terms", "privacy", "guidelines"]:

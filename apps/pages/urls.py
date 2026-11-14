@@ -11,5 +11,6 @@ urlpatterns = [
     path("styleguide/", views.styleguide, name="styleguide"),
     path("layout/", views.set_layout, name="set_layout"),
     path("healthz/", views.healthz, name="healthz"),
+    path("healthz", views.healthz),
     path("robots.txt", views.robots_txt, name="robots_txt"),
 ]

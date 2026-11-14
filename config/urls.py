@@ -1,8 +1,15 @@
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
 from apps.accounts.views import me_view
 from apps.bounties import views as bounty_views
+from apps.pages.sitemaps import BountySitemap, StaticViewSitemap
+
+sitemaps = {
+    "static": StaticViewSitemap,
+    "bounties": BountySitemap,
+}
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -16,6 +23,7 @@ urlpatterns = [
     path("claims/<int:pk>/reject/", bounty_views.claim_reject_view, name="claim_reject"),
     path("claims/<int:pk>/withdraw/", bounty_views.claim_withdraw_view, name="claim_withdraw"),
     
+    path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("", include("apps.pages.urls", namespace="pages")),
 ]
 

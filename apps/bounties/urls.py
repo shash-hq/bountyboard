@@ -10,6 +10,9 @@ urlpatterns = [
     path("<int:pk>/done/", views.bounty_done_view, name="done"),
     path("<int:pk>/cancel/", views.bounty_cancel_view, name="cancel"),
     path("<int:pk>/report/", views.bounty_report_view, name="report"),
+    path("<int:pk>/toggle-hide/", views.bounty_toggle_hide_view, name="toggle_hide"),
+    path("reports/<int:pk>/resolve/", views.report_resolve_view, name="resolve_report"),
+    path("mod/", views.mod_queue_view, name="mod_queue"),
     # Slug pattern at the end so specific sub-paths match first
     path("<int:pk>/<slug:slug>/", views.bounty_detail_view, name="detail"),
 ]

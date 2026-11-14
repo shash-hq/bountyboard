@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinLengthValidator, MinValueValidator
 from django.db import models
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -124,6 +125,9 @@ class Bounty(models.Model):
             self.slug = base_slug
         self.full_clean()
         super().save(*args, **kwargs)
+
+    def get_absolute_url(self) -> str:
+        return reverse("bounties:detail", kwargs={"pk": self.pk, "slug": self.slug})
 
     @property
     def is_expired(self) -> bool:

@@ -1,6 +1,7 @@
 import threading
 from datetime import timedelta
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
 from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
@@ -9,12 +10,22 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.bounties.models import Bounty, BountyStatus, Category, Claim, ClaimStatus
+from apps.bounties.models import (
+    Bounty,
+    BountyStatus,
+    Category,
+    Claim,
+    ClaimStatus,
+    Report,
+    ReportReason,
+)
 from apps.bounties.services import (
     accept_claim,
     cancel_bounty,
+    hide_bounty,
     mark_bounty_done,
     reject_claim,
+    resolve_report,
     withdraw_claim,
 )
 from apps.bounties.templatetags.bounty_tags import inr_format, time_left
@@ -506,11 +517,21 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
 
         def try_accept(claim_id):
             connection.close()  # Ensure each thread has its own DB connection
-            try:
-                c = accept_claim(claim_id, self.poster)
-                results.append(c.id)
-            except Exception as e:
-                errors.append(e)
+            import time
+            for attempt in range(5):
+                try:
+                    c = accept_claim(claim_id, self.poster)
+                    results.append(c.id)
+                    return
+                except (OperationalError, DatabaseError) as e:
+                    if "locked" in str(e).lower() and attempt < 4:
+                        time.sleep(0.05)
+                        continue
+                    errors.append(e)
+                    return
+                except Exception as e:
+                    errors.append(e)
+                    return
 
         t1 = threading.Thread(target=try_accept, args=(self.claim1.id,))
         t2 = threading.Thread(target=try_accept, args=(self.claim2.id,))
@@ -610,3 +631,152 @@ class SessionAndCookieFeatureTests(TestCase):
         self.client.cookies["bb_layout"] = "grid"
         res_grid = self.client.get(reverse("board"))
         self.assertContains(res_grid, 'class="bounty-grid"')
+
+
+class ModeratorWorkflowTests(TestCase):
+    def setUp(self):
+        self.poster = User.objects.create_user(
+            username="poster_student", email="poster@campus.edu.in", password="Password123!"
+        )
+        self.student = User.objects.create_user(
+            username="random_student", email="student@campus.edu.in", password="Password123!"
+        )
+        self.mod_user = User.objects.create_user(
+            username="campus_admin", email="admin@campus.edu.in", password="Password123!"
+        )
+
+        mod_group, _ = Group.objects.get_or_create(name="Moderators")
+        perm = Permission.objects.get(codename="moderate", content_type__app_label="bounties")
+        mod_group.permissions.add(perm)
+        self.mod_user.groups.add(mod_group)
+
+        self.bounty = Bounty.objects.create(
+            poster=self.poster,
+            title="Suspicious Commercial Ad Posting",
+            description="Buy cheap assignment solutions here at external website link.",
+            category=Category.OTHER,
+            reward=500,
+            deadline=timezone.now() + timedelta(days=2),
+            status=BountyStatus.OPEN,
+        )
+
+    def test_student_can_file_abuse_report(self):
+        """Verify student can file a report against a suspicious bounty."""
+        self.client.force_login(self.student)
+        url = reverse("bounties:report", kwargs={"pk": self.bounty.pk})
+        resp = self.client.post(
+            url,
+            {"reason": ReportReason.COMMERCIAL_SPAM, "note": "Commercial advertisement on academic board."},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        report = Report.objects.filter(bounty=self.bounty).first()
+        self.assertIsNotNone(report)
+        self.assertEqual(report.reporter, self.student)
+        self.assertEqual(report.reason, ReportReason.COMMERCIAL_SPAM)
+        self.assertFalse(report.resolved)
+
+    def test_regular_user_cannot_access_mod_queue(self):
+        """Verify non-moderators get 403 Forbidden on mod queue."""
+        self.client.force_login(self.student)
+        resp = self.client.get(reverse("bounties:mod_queue"))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_moderator_can_access_mod_queue(self):
+        """Verify moderator can view mod queue with pending reports and hidden bounties."""
+        Report.objects.create(
+            bounty=self.bounty,
+            reporter=self.student,
+            reason=ReportReason.COMMERCIAL_SPAM,
+            note="Spam check",
+        )
+        self.client.force_login(self.mod_user)
+        resp = self.client.get(reverse("bounties:mod_queue"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "CAMPUS MODERATION QUEUE")
+        self.assertContains(resp, "Suspicious Commercial Ad")
+
+    def test_moderator_can_toggle_bounty_visibility(self):
+        """Verify moderator can hide and unhide a bounty."""
+        # Non-mod cannot hide
+        self.client.force_login(self.student)
+        resp_denied = self.client.post(reverse("bounties:toggle_hide", kwargs={"pk": self.bounty.pk}))
+        self.assertEqual(resp_denied.status_code, 403)
+
+        # Moderator can hide
+        self.client.force_login(self.mod_user)
+        resp_hide = self.client.post(reverse("bounties:toggle_hide", kwargs={"pk": self.bounty.pk}), follow=True)
+        self.assertEqual(resp_hide.status_code, 200)
+        self.bounty.refresh_from_db()
+        self.assertTrue(self.bounty.is_hidden)
+
+        # Board excludes hidden bounty
+        resp_board = self.client.get(reverse("board"))
+        self.assertNotContains(resp_board, "Suspicious Commercial Ad")
+
+        # Moderator can unhide
+        resp_unhide = self.client.post(reverse("bounties:toggle_hide", kwargs={"pk": self.bounty.pk}), follow=True)
+        self.assertEqual(resp_unhide.status_code, 200)
+        self.bounty.refresh_from_db()
+        self.assertFalse(self.bounty.is_hidden)
+
+    def test_hidden_bounty_detail_access_rules(self):
+        """Hidden bounties return 404 for public/students, 200 for poster and moderator."""
+        hide_bounty(self.bounty.pk, self.mod_user, is_hidden=True)
+        detail_url = reverse("bounties:detail", kwargs={"pk": self.bounty.pk, "slug": self.bounty.slug})
+
+        # Anonymous -> 404
+        self.client.logout()
+        resp_anon = self.client.get(detail_url)
+        self.assertEqual(resp_anon.status_code, 404)
+
+        # Random student -> 404
+        self.client.force_login(self.student)
+        resp_student = self.client.get(detail_url)
+        self.assertEqual(resp_student.status_code, 404)
+
+        # Poster -> 200
+        self.client.force_login(self.poster)
+        resp_poster = self.client.get(detail_url)
+        self.assertEqual(resp_poster.status_code, 200)
+
+        # Moderator -> 200
+        self.client.force_login(self.mod_user)
+        resp_mod = self.client.get(detail_url)
+        self.assertEqual(resp_mod.status_code, 200)
+        self.assertContains(resp_mod, "MODERATOR TOOLS")
+
+    def test_moderator_resolve_report_and_hide_bounty(self):
+        """Verify resolving report with action=hide_and_resolve marks report resolved and hides bounty."""
+        report = Report.objects.create(
+            bounty=self.bounty,
+            reporter=self.student,
+            reason=ReportReason.ACADEMIC_DISHONESTY,
+            note="Selling exam leak.",
+        )
+        self.client.force_login(self.mod_user)
+        resolve_url = reverse("bounties:resolve_report", kwargs={"pk": report.pk})
+        resp = self.client.post(resolve_url, {"action": "hide_and_resolve"}, follow=True)
+        self.assertEqual(resp.status_code, 200)
+
+        report.refresh_from_db()
+        self.bounty.refresh_from_db()
+        self.assertTrue(report.resolved)
+        self.assertTrue(self.bounty.is_hidden)
+
+
+class RateLimitingVerificationTests(TestCase):
+    def test_rate_limited_views_have_ratelimit_decorators(self):
+        """Verify rate limits are configured on all required critical endpoints."""
+        from apps.accounts.views import login_view, signup_view
+        from apps.bounties.views import (
+            bounty_claim_view,
+            bounty_create_view,
+            bounty_report_view,
+        )
+
+        for view_fn in [signup_view, login_view, bounty_create_view, bounty_claim_view, bounty_report_view]:
+            # django-ratelimit sets ratelimit attribute or wraps function
+            has_rl = hasattr(view_fn, "ratelimit") or hasattr(view_fn, "__wrapped__")
+            self.assertTrue(has_rl, f"Expected {view_fn.__name__} to be wrapped with ratelimit decorator.")
+

@@ -14,8 +14,10 @@ from .notifications import send_claim_received_notification
 from .services import (
     accept_claim,
     cancel_bounty,
+    hide_bounty,
     mark_bounty_done,
     reject_claim,
+    resolve_report,
     withdraw_claim,
 )
 
@@ -323,3 +325,71 @@ def bounty_report_view(request, pk):
         messages.error(request, "Unable to file report. Check the form.")
 
     return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+
+
+@login_required
+def mod_queue_view(request):
+    """Moderator dashboard listing open abuse reports and hidden listings."""
+    if not (request.user.has_perm("bounties.moderate") or request.user.is_staff):
+        raise PermissionDenied("You do not have moderator permissions.")
+
+    unresolved_reports = (
+        Report.objects.filter(resolved=False)
+        .select_related("bounty", "reporter", "bounty__poster")
+        .order_by("-created_at")
+    )
+    hidden_bounties = (
+        Bounty.objects.filter(is_hidden=True)
+        .select_related("poster")
+        .annotate(claim_count=Count("claims"))
+        .order_by("-updated_at")
+    )
+
+    context = {
+        "unresolved_reports": unresolved_reports,
+        "hidden_bounties": hidden_bounties,
+    }
+    return render(request, "bounties/mod_queue.html", context)
+
+
+@require_POST
+@login_required
+def bounty_toggle_hide_view(request, pk):
+    """Toggle whether a bounty is hidden from the public board."""
+    if not (request.user.has_perm("bounties.moderate") or request.user.is_staff):
+        raise PermissionDenied("You do not have moderator permissions.")
+
+    bounty = get_object_or_404(Bounty, pk=pk)
+    new_hidden_state = not bounty.is_hidden
+    hide_bounty(bounty.pk, request.user, is_hidden=new_hidden_state)
+
+    if new_hidden_state:
+        messages.warning(request, f"Bounty '{bounty.title}' has been hidden from public board.")
+    else:
+        messages.success(request, f"Bounty '{bounty.title}' is now visible on public board.")
+
+    referer = request.META.get("HTTP_REFERER")
+    if referer and ("mod" in referer or "bounties" in referer):
+        return redirect(referer)
+    return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+
+
+@require_POST
+@login_required
+def report_resolve_view(request, pk):
+    """Moderator resolves an abuse report, optionally hiding the bounty."""
+    if not (request.user.has_perm("bounties.moderate") or request.user.is_staff):
+        raise PermissionDenied("You do not have moderator permissions.")
+
+    report = get_object_or_404(Report, pk=pk)
+    action = request.POST.get("action", "resolve")
+    hide_flag = (action == "hide_and_resolve")
+
+    resolve_report(report.pk, request.user, hide_bounty_flag=hide_flag)
+
+    if hide_flag:
+        messages.success(request, f"Report resolved and bounty '{report.bounty.title}' hidden.")
+    else:
+        messages.success(request, "Report marked as resolved.")
+
+    return redirect("bounties:mod_queue")
