@@ -8,7 +8,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    SECRET_KEY=(str, "insecure-default-django-key-for-dev-builds-only-1234567890"),
     ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost"]),
     ALLOWED_EMAIL_DOMAIN=(str, ""),
     DATABASE_URL=(str, f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
@@ -23,7 +22,10 @@ env_file = BASE_DIR / ".env"
 if env_file.exists():
     environ.Env.read_env(str(env_file))
 
-SECRET_KEY = env("SECRET_KEY")
+# No committed default: dev.py supplies a throwaway key, prod.py refuses to boot without a real one.
+SECRET_KEY = env("SECRET_KEY", default="")
+# Public base URL, used for absolute links (emails). dev.py defaults it, prod.py requires it.
+SITE_URL = env("SITE_URL", default="")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 if "testserver" not in ALLOWED_HOSTS:

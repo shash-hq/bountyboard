@@ -111,11 +111,12 @@ Configuration is managed via `django-environ`. Copy `.env.example` to `.env` to 
 
 | Variable | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `SECRET_KEY` | String | *Dev default* | Django cryptographic secret key (must be unique and secret in production). |
+| `SECRET_KEY` | String | *Dev only; **required in prod*** | Django secret key. Production refuses to boot without one (50+ chars, not a known/insecure value). |
 | `DEBUG` | Boolean | `True` in dev, `False` in prod | Enables Django debug mode and debug toolbar. |
 | `DATABASE_URL` | String | `sqlite:///db.sqlite3` | Database connection URL (e.g., `postgres://user:pass@host:5432/db`). |
-| `ALLOWED_HOSTS` | List | `localhost,127.0.0.1` | Comma-separated allowed HTTP host headers. |
-| `CSRF_TRUSTED_ORIGINS` | List | `https://*.railway.app,https://*.onrender.com` | Comma-separated trusted origins for CSRF validation. |
+| `ALLOWED_HOSTS` | List | `localhost,127.0.0.1` in dev; **required in prod** | Comma-separated allowed HTTP host headers. No `*` in production. |
+| `CSRF_TRUSTED_ORIGINS` | List | *None*; **required in prod** | Comma-separated explicit `https://` origins for CSRF validation (no wildcards). |
+| `SITE_URL` | String | `http://localhost:8000` in dev; **required in prod** | Public `https://` base URL of the site. |
 | `ALLOWED_EMAIL_DOMAIN` | String | *None (Any domain allowed)* | Optional domain filter for student registration (e.g. `campus.edu.in`). |
 | `EMAIL_URL` | String | `consolemail://` | Email backend URL (`smtp://user:pass@smtp.example.com:587` in production). |
 | `SECURE_SSL_REDIRECT` | Boolean | `True` in prod | Forces HTTPS redirects on all incoming connections. |

@@ -2,6 +2,10 @@ from .base import *  # noqa: F403
 
 DEBUG = True
 
+# Throwaway development-only defaults. prod.py rejects this key.
+SECRET_KEY = SECRET_KEY or "insecure-default-django-key-for-dev-builds-only-1234567890"  # noqa: F405
+SITE_URL = SITE_URL or "http://localhost:8000"  # noqa: F405
+
 # Add django-debug-toolbar
 try:
     import debug_toolbar  # noqa: F401
