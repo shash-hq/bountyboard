@@ -49,6 +49,15 @@ jobs:
       run: |
         python manage.py check --settings=config.settings.dev
 
+    - name: Production settings boot and deploy check
+      env:
+        SECRET_KEY: ci-only-not-a-real-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+        ALLOWED_HOSTS: bountyboard.example.com
+        CSRF_TRUSTED_ORIGINS: https://bountyboard.example.com
+        SITE_URL: https://bountyboard.example.com
+      run: |
+        python manage.py check --deploy --fail-level WARNING --settings=config.settings.prod
+
     - name: Check Missing Migrations
       run: |
         python manage.py makemigrations --check --dry-run --settings=config.settings.dev
