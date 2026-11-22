@@ -1,4 +1,4 @@
-# ⚡ Bounty Board
+#  Bounty Board
 
 > **Campus micro-task marketplace for Indian university students.**  
 > Post small bounties (*"Debug my Arduino, ₹200"*, *"Format my LaTeX lab report, ₹150"*), claim them, get selected atomically, do the work offline, and get paid directly in cash or UPI. Zero platform fees. Zero middlemen.
@@ -12,7 +12,7 @@
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 | Desktop Live Board (`1280px`) | Mobile View (`375px`) |
 | :---: | :---: |
@@ -24,7 +24,7 @@
 
 ---
 
-## 🌐 Live Demo & Deployment
+##  Live Demo & Deployment
 
 - **Live URL**: [https://bountyboard.up.railway.app](https://bountyboard.up.railway.app) (Staging: [https://bountyboard-demo.onrender.com](https://bountyboard-demo.onrender.com))
 - **Demo Accounts**:
@@ -34,7 +34,7 @@
 
 ---
 
-## 🚀 Run Locally in 5 Commands
+##  Run Locally in 5 Commands
 
 ```bash
 git clone https://github.com/shash-hq/bountyboard.git && cd bountyboard
@@ -48,7 +48,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. (To inspect
 
 ---
 
-## 💡 Product Philosophy & Rules
+##  Product Philosophy & Rules
 
 1. **Settle Offline**: In v1, there are no payment gateways or real-time chat rooms. The UI clearly states **"Settle Offline via Cash or Direct UPI"**. Work and verification happen face-to-face on campus.
 2. **Atomic Single Solver**: When the poster accepts one claim, a database row-lock (`select_for_update`) executes inside `transaction.atomic()`. The chosen claim becomes `ACCEPTED`, other pending claims are automatically `REJECTED`, and the bounty status switches to `CLAIMED`.
@@ -61,7 +61,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. (To inspect
 
 ---
 
-## 🎨 Hand-Crafted Neo-Brutalist Design System
+##  Hand-Crafted Neo-Brutalist Design System
 
 Bounty Board features an authentic, hand-coded neo-brutalist aesthetic with zero bloated front-end frameworks (no React, Tailwind, or Bootstrap):
 
@@ -79,7 +79,7 @@ Bounty Board features an authentic, hand-coded neo-brutalist aesthetic with zero
 
 ---
 
-## 🗺️ Django Syllabus Map
+##  Django Syllabus Map
 
 This repository serves as a reference implementation mapping every core concept in modern server-rendered Django back to production code:
 
@@ -105,7 +105,7 @@ This repository serves as a reference implementation mapping every core concept 
 
 ---
 
-## ⚙️ Environment Configuration
+##  Environment Configuration
 
 Configuration is managed via `django-environ`. Copy `.env.example` to `.env` to configure your local or production instance:
 
@@ -124,7 +124,7 @@ Configuration is managed via `django-environ`. Copy `.env.example` to `.env` to 
 
 ---
 
-## 🚢 Deployment (Railway & Render)
+##  Deployment (Railway & Render)
 
 The project ships ready-to-deploy with Gunicorn and WhiteNoise static asset compression.
 
@@ -150,7 +150,7 @@ The project ships ready-to-deploy with Gunicorn and WhiteNoise static asset comp
 
 ---
 
-## 🛡️ Testing & Quality Assurance
+##  Testing & Quality Assurance
 
 Run the test suite with coverage:
 
@@ -167,6 +167,6 @@ coverage report
 
 ---
 
-## 📄 License
+##  License
 
 Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
