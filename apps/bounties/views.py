@@ -14,12 +14,20 @@ from .notifications import send_claim_received_notification
 from .services import (
     accept_claim,
     cancel_bounty,
+    create_claim,
     hide_bounty,
     mark_bounty_done,
     reject_claim,
     resolve_report,
     withdraw_claim,
 )
+
+
+def _error_text(e) -> str:
+    """Human-readable text for a service error. ``str(ValidationError)`` renders as
+    "['...']", so read ``.messages`` instead."""
+    messages_ = getattr(e, "messages", None)
+    return " ".join(messages_) if messages_ else str(e)
 
 
 def board_view(request):
@@ -209,7 +217,7 @@ def bounty_done_view(request, pk):
         bounty = mark_bounty_done(pk, request.user)
         messages.success(request, f"Bounty '{bounty.title}' marked as DONE! Offline settlement confirmed.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
     
     bounty = get_object_or_404(Bounty, pk=pk)
     return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
@@ -223,7 +231,7 @@ def bounty_cancel_view(request, pk):
         bounty = cancel_bounty(pk, request.user)
         messages.info(request, f"Bounty '{bounty.title}' has been cancelled.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     bounty = get_object_or_404(Bounty, pk=pk)
     return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
@@ -242,19 +250,20 @@ def bounty_claim_view(request, pk):
 
     form = ClaimForm(request.POST)
     if form.is_valid():
-        claim = form.save(commit=False)
-        claim.bounty = bounty
-        claim.claimant = request.user
-        claim.status = ClaimStatus.PENDING
         try:
-            claim.save()
+            claim = create_claim(
+                bounty.pk,
+                request.user,
+                message=form.cleaned_data["message"],
+                contact=form.cleaned_data["contact"],
+            )
             send_claim_received_notification(claim)
             messages.success(
                 request,
                 f"Your claim on '{bounty.title}' was submitted! The poster will review your contact handle.",
             )
         except ValidationError as e:
-            messages.error(request, str(e))
+            messages.error(request, _error_text(e))
     else:
         for errs in form.errors.values():
             for err in errs:
@@ -275,7 +284,7 @@ def claim_accept_view(request, pk):
             f"Accepted claim by {claim.claimant.username}! You can now coordinate via their contact handle: {claim.contact}",
         )
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     return redirect(f"/bounties/{claim.bounty.pk}/{claim.bounty.slug}/")
 
@@ -289,7 +298,7 @@ def claim_reject_view(request, pk):
         reject_claim(claim.pk, request.user)
         messages.info(request, f"Rejected claim by {claim.claimant.username}.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     return redirect(f"/bounties/{claim.bounty.pk}/{claim.bounty.slug}/")
 
@@ -303,7 +312,7 @@ def claim_withdraw_view(request, pk):
         withdraw_claim(claim.pk, request.user)
         messages.info(request, "Your claim was withdrawn.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     return redirect("/me/")
 

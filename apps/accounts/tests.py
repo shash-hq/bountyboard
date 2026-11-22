@@ -163,3 +163,56 @@ class AccountsAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("Reset your account password", mail.outbox[0].subject)
+
+
+class EmailDomainGateTests(TestCase):
+    """The domain gate must match the domain exactly or as a subdomain, never as a bare suffix."""
+
+    def _signup_form(self, email, username):
+        from apps.accounts.forms import SignupForm
+
+        return SignupForm(
+            data={
+                "username": username,
+                "email": email,
+                "password": "Zx9!long-pass",
+                "password_confirm": "Zx9!long-pass",
+            }
+        )
+
+    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
+    def test_lookalike_suffix_domain_is_rejected(self):
+        form = self._signup_form("eve@notiitb.ac.in", "eve")
+        self.assertFalse(form.is_valid())
+        self.assertIn("email", form.errors)
+
+    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
+    def test_subdomain_is_accepted(self):
+        form = self._signup_form("sam@cse.iitb.ac.in", "sam")
+        self.assertTrue(form.is_valid(), form.errors)
+
+    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
+    def test_uppercase_domain_is_accepted(self):
+        form = self._signup_form("Sam@IITB.AC.IN", "sam2")
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["email"], "sam@iitb.ac.in")
+
+    @override_settings(ALLOWED_EMAIL_DOMAIN="  IITB.ac.in ")
+    def test_configured_domain_is_normalized(self):
+        self.assertTrue(self._signup_form("sam@iitb.ac.in", "sam3").is_valid())
+        self.assertFalse(self._signup_form("eve@notiitb.ac.in", "eve2").is_valid())
+
+    @override_settings(ALLOWED_EMAIL_DOMAIN=".iitb.ac.in")
+    def test_leading_dot_setting_still_allows_domain_and_subdomains(self):
+        self.assertTrue(self._signup_form("sam@iitb.ac.in", "sam4").is_valid())
+        self.assertTrue(self._signup_form("sam@cse.iitb.ac.in", "sam5").is_valid())
+        self.assertFalse(self._signup_form("eve@notiitb.ac.in", "eve3").is_valid())
+
+    def test_helper_edge_cases(self):
+        from apps.accounts.forms import email_domain_allowed
+
+        self.assertTrue(email_domain_allowed("a@iitb.ac.in", "iitb.ac.in"))
+        self.assertTrue(email_domain_allowed("a@x.y.iitb.ac.in", "iitb.ac.in"))
+        self.assertFalse(email_domain_allowed("a@iitb.ac.in.evil.com", "iitb.ac.in"))
+        self.assertFalse(email_domain_allowed("a@evil.com", "iitb.ac.in"))
+        self.assertFalse(email_domain_allowed("a@", "iitb.ac.in"))

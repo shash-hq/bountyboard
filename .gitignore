@@ -35,3 +35,4 @@ htmlcov/
 # Debug toolbar / logs
 *.log
 CLAUDE.local.md
+.claude/settings.local.json
