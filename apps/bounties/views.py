@@ -14,11 +14,13 @@ from .notifications import send_claim_received_notification
 from .services import (
     accept_claim,
     cancel_bounty,
+    create_bounty,
     create_claim,
     hide_bounty,
     mark_bounty_done,
     reject_claim,
     resolve_report,
+    update_bounty_details,
     withdraw_claim,
 )
 
@@ -164,10 +166,8 @@ def bounty_create_view(request):
     if request.method == "POST":
         form = BountyForm(request.POST)
         if form.is_valid():
-            bounty = form.save(commit=False)
-            bounty.poster = request.user
             try:
-                bounty.save()
+                bounty = create_bounty(request.user, **form.cleaned_data)
                 messages.success(request, f"Bounty '{bounty.title}' is now live on the board!")
                 return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
             except ValidationError as e:
@@ -196,7 +196,13 @@ def bounty_edit_view(request, pk):
     if request.method == "POST":
         form = BountyForm(request.POST, instance=bounty)
         if form.is_valid():
-            bounty = form.save()
+            # Do not form.save(): that writes the whole (possibly stale) row back.
+            # The service locks the bounty, re-checks it is still OPEN and writes only these fields.
+            try:
+                bounty = update_bounty_details(bounty.pk, request.user, **form.cleaned_data)
+            except ValidationError as e:
+                messages.error(request, _error_text(e))
+                return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
             messages.success(request, f"Bounty '{bounty.title}' updated successfully.")
             return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
     else:

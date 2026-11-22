@@ -12,6 +12,7 @@ from datetime import timedelta
 from itertools import count
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
@@ -48,6 +49,34 @@ def run_together(*calls):
         t.join(timeout=30)
     assert not any(t.is_alive() for t in threads), "worker thread hung (deadlock?)"
     return out
+
+
+def wait_until_a_lock_request_is_waiting(timeout=10.0):
+    """Block until some backend is waiting on a lock (the worker reached the row we hold)."""
+    deadline = time.monotonic() + timeout
+    with connection.cursor() as cur:
+        while time.monotonic() < deadline:
+            cur.execute("SELECT count(*) FROM pg_locks WHERE NOT granted")
+            if cur.fetchone()[0]:
+                return
+            time.sleep(0.01)
+    raise AssertionError("worker never blocked on the lock we hold")
+
+
+def in_worker(fn):
+    """Start fn in a thread (own DB connection, closed in finally). Returns (thread, outcome)."""
+    outcome = {}
+
+    def target():
+        try:
+            outcome["ok"] = fn()
+        except Exception as e:  # noqa: BLE001 - the outcome IS the assertion subject
+            outcome["err"] = e
+        finally:
+            connections.close_all()
+
+    t = threading.Thread(target=target)
+    return t, outcome
 
 
 def make_user(prefix):
@@ -149,7 +178,7 @@ class TransitionRaceTests(TransactionTestCase):
         with transaction.atomic():
             Bounty.objects.select_for_update().get(id=bounty.id)  # hold the row lock
             worker.start()
-            self.wait_until_a_lock_request_is_waiting()
+            wait_until_a_lock_request_is_waiting()
             services.accept_claim(claim1.id, poster)  # state changes while the worker waits
         worker.join(timeout=30)
         self.assertFalse(worker.is_alive(), "worker hung (deadlock?)")
@@ -161,17 +190,6 @@ class TransitionRaceTests(TransactionTestCase):
         # I3: no PENDING claim may exist on a non-OPEN bounty
         self.assertFalse(Claim.objects.filter(bounty=bounty, status=ClaimStatus.PENDING).exists())
         self.assertFalse(Claim.objects.filter(bounty=bounty, claimant=late).exists())
-
-    def wait_until_a_lock_request_is_waiting(self, timeout=10.0):
-        """Block until some backend is waiting on a lock (i.e. the worker reached the row we hold)."""
-        deadline = time.monotonic() + timeout
-        with connection.cursor() as cur:
-            while time.monotonic() < deadline:
-                cur.execute("SELECT count(*) FROM pg_locks WHERE NOT granted")
-                if cur.fetchone()[0]:
-                    return
-                time.sleep(0.01)
-        self.fail("worker never blocked on the bounty lock")
 
     def test_double_submit_claim_is_idempotent_not_a_crash(self):
         for _ in range(ITERATIONS):
@@ -247,3 +265,144 @@ class FriendlyErrorViewTests(TestCase):
         )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(Claim.objects.filter(bounty=self.bounty, claimant=self.c1).count(), 1)
+
+
+BOUNTY_FIELDS = dict(
+    title="Cap race regression bounty",
+    description="x" * 30,
+    category="Tech",
+    reward=100,
+)
+
+
+def bounty_fields():
+    return dict(BOUNTY_FIELDS, deadline=timezone.now() + timedelta(days=2))
+
+
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
+class CreateBountyCapRaceTests(TransactionTestCase):
+    """I4: at most 5 OPEN bounties per user, even under concurrent creates."""
+
+    def poster_with_open(self, n):
+        poster = make_user("capposter")
+        for _ in range(n):
+            make_bounty(poster)
+        return poster
+
+    def open_count(self, poster):
+        return Bounty.objects.filter(poster=poster, status=BountyStatus.OPEN).count()
+
+    def test_concurrent_creates_at_four_open_yield_exactly_five(self):
+        for _ in range(ITERATIONS):
+            poster = self.poster_with_open(4)
+            out = run_together(
+                lambda: services.create_bounty(poster, **bounty_fields()),
+                lambda: services.create_bounty(poster, **bounty_fields()),
+            )
+            self.assertEqual([o[0] for o in sorted(out)], ["err", "ok"], out)
+            self.assertIsInstance(
+                next(o[1] for o in out if o[0] == "err"), ValidationError)
+            self.assertEqual(self.open_count(poster), 5)
+
+    def test_create_blocked_by_user_lock_cannot_exceed_cap(self):
+        """Deterministic: main holds the poster's USER row lock and creates the 5th bounty
+        while a second create waits. When the lock is released the waiter must re-count (5)
+        and refuse. Without the user lock it counts a stale 4 and inserts a 6th."""
+        poster = self.poster_with_open(4)
+        worker, outcome = in_worker(lambda: services.create_bounty(poster, **bounty_fields()))
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=poster.pk)  # hold the user row lock
+            worker.start()
+            wait_until_a_lock_request_is_waiting()
+            make_bounty(poster)  # the 5th, committed when the block exits
+        worker.join(timeout=30)
+        self.assertFalse(worker.is_alive(), "worker hung (deadlock?)")
+        self.assertIn("err", outcome, outcome)
+        self.assertIsInstance(outcome["err"], ValidationError)
+        self.assertEqual(self.open_count(poster), 5)
+
+
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
+class EditBountyRaceTests(TransactionTestCase):
+    def setUp(self):
+        self.poster = make_user("editposter")
+        self.claimant = make_user("editclaimant")
+        self.bounty = make_bounty(self.poster)
+        self.claim = make_claim(self.bounty, self.claimant)
+
+    def test_edit_blocked_by_bounty_lock_cannot_edit_an_accepted_bounty(self):
+        """Deterministic: main holds the bounty lock and accepts the claim while the poster's
+        edit waits. The edit must then re-read the bounty (CLAIMED) and refuse, leaving the
+        accepted state and the reward untouched. Without the lock the edit validates against
+        the stale OPEN row and rewrites the reward after acceptance."""
+        worker, outcome = in_worker(
+            lambda: services.update_bounty_details(self.bounty.id, self.poster, reward=10))
+        with transaction.atomic():
+            Bounty.objects.select_for_update().get(id=self.bounty.id)
+            worker.start()
+            wait_until_a_lock_request_is_waiting()
+            services.accept_claim(self.claim.id, self.poster)
+        worker.join(timeout=30)
+        self.assertFalse(worker.is_alive(), "worker hung (deadlock?)")
+
+        self.assertIn("err", outcome, outcome)
+        self.assertIsInstance(outcome["err"], InvalidTransition)
+        self.bounty.refresh_from_db()
+        self.assertEqual(self.bounty.status, BountyStatus.CLAIMED)
+        self.assertEqual(self.bounty.accepted_claim_id, self.claim.id)
+        self.assertEqual(self.bounty.reward, 100)
+
+    def test_edit_vs_cancel_never_resurrects_the_bounty(self):
+        for _ in range(ITERATIONS):
+            bounty = make_bounty(make_user("racer"))
+            out = run_together(
+                lambda: services.update_bounty_details(bounty.id, bounty.poster, reward=500),
+                lambda: services.cancel_bounty(bounty.id, bounty.poster),
+            )
+            bounty.refresh_from_db()
+            self.assertEqual(bounty.status, BountyStatus.CANCELLED, out)  # a stale save must not reopen it
+
+
+class BountyEditServiceTests(TestCase):
+    def setUp(self):
+        self.poster = make_user("svcposter")
+        self.other = make_user("svcother")
+        self.bounty = make_bounty(self.poster)
+
+    def test_edit_updates_only_editable_fields(self):
+        services.update_bounty_details(self.bounty.id, self.poster, title="A brand new title", reward=250)
+        self.bounty.refresh_from_db()
+        self.assertEqual((self.bounty.title, self.bounty.reward), ("A brand new title", 250))
+        self.assertEqual(self.bounty.status, BountyStatus.OPEN)
+
+    def test_non_poster_cannot_edit(self):
+        with self.assertRaises(PermissionDenied):
+            services.update_bounty_details(self.bounty.id, self.other, reward=250)
+
+    def test_cannot_edit_after_cancel(self):
+        services.cancel_bounty(self.bounty.id, self.poster)
+        with self.assertRaises(InvalidTransition):
+            services.update_bounty_details(self.bounty.id, self.poster, reward=250)
+
+    def test_status_is_not_an_editable_field(self):
+        with self.assertRaises(TypeError):
+            services.update_bounty_details(self.bounty.id, self.poster, status=BountyStatus.DONE)
+
+    def test_view_refuses_edit_when_bounty_stopped_being_open(self):
+        self.client.force_login(self.poster)
+        services.cancel_bounty(self.bounty.id, self.poster)
+        r = self.client.post(
+            reverse("bounties:edit", args=[self.bounty.pk]),
+            dict(BOUNTY_FIELDS, reward=300, deadline=(timezone.now() + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")),
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.bounty.refresh_from_db()
+        self.assertEqual((self.bounty.status, self.bounty.reward), (BountyStatus.CANCELLED, 100))
+
+    def test_create_bounty_rejects_sixth_open(self):
+        for _ in range(3):  # setUp already made one: 4 open, so exactly one more is allowed
+            make_bounty(self.poster)
+        services.create_bounty(self.poster, **bounty_fields())
+        with self.assertRaises(ValidationError):
+            services.create_bounty(self.poster, **bounty_fields())
