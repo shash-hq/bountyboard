@@ -6,12 +6,13 @@ thread wins. PostgreSQL only: SQLite serializes writers and ignores select_for_u
 pass there would prove nothing. Every worker thread closes its own DB connection.
 """
 import threading
+import time
 import unittest
 from datetime import timedelta
 from itertools import count
 
 from django.contrib.auth import get_user_model
-from django.db import connection, connections
+from django.db import connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -123,22 +124,54 @@ class TransitionRaceTests(TransactionTestCase):
                 self.assertEqual((bounty.status, claim.status), (BountyStatus.CANCELLED, ClaimStatus.REJECTED))
                 self.assertIsNone(bounty.accepted_claim_id)
 
-    def test_new_claim_vs_accept_leaves_no_orphan_pending_claim(self):
-        for _ in range(ITERATIONS):
-            poster, bounty = self.fresh()
-            claim1 = make_claim(bounty, self.c1)
-            claimant2 = make_user("late")
-            out = run_together(
-                lambda: services.accept_claim(claim1.id, poster),
-                lambda: services.create_claim(bounty.id, claimant2, "m" * 12, "c2"),
-            )
-            self.assertEqual(out[0][0], "ok", out)  # accepting claim1 always works
-            bounty.refresh_from_db()
-            self.assertEqual(bounty.status, BountyStatus.CLAIMED)
-            # I3: no PENDING claim may exist on a non-OPEN bounty
-            self.assertFalse(Claim.objects.filter(bounty=bounty, status=ClaimStatus.PENDING).exists())
-            if out[1][0] == "err":
-                self.assertIsInstance(out[1][1], InvalidTransition, out[1][1])
+    def test_claim_blocked_by_bounty_lock_cannot_land_on_accepted_bounty(self):
+        """Deterministic claim-vs-accept, no timing luck.
+
+        The main thread holds the bounty row lock (inside atomic) and accepts claim1 while a
+        second thread tries to create a claim. The second thread must WAIT for the lock, then
+        re-read the bounty (now CLAIMED) and refuse. Without select_for_update it would validate
+        against the stale OPEN row and insert an orphan PENDING claim once the lock is released.
+        """
+        poster, bounty = self.fresh()
+        claim1 = make_claim(bounty, self.c1)
+        late = make_user("late")
+        outcome = {}
+
+        def late_claim():
+            try:
+                outcome["ok"] = services.create_claim(bounty.id, late, "m" * 12, "c2")
+            except Exception as e:  # noqa: BLE001
+                outcome["err"] = e
+            finally:
+                connections.close_all()
+
+        worker = threading.Thread(target=late_claim)
+        with transaction.atomic():
+            Bounty.objects.select_for_update().get(id=bounty.id)  # hold the row lock
+            worker.start()
+            self.wait_until_a_lock_request_is_waiting()
+            services.accept_claim(claim1.id, poster)  # state changes while the worker waits
+        worker.join(timeout=30)
+        self.assertFalse(worker.is_alive(), "worker hung (deadlock?)")
+
+        self.assertIn("err", outcome, outcome)
+        self.assertIsInstance(outcome["err"], InvalidTransition, outcome["err"])
+        bounty.refresh_from_db()
+        self.assertEqual(bounty.status, BountyStatus.CLAIMED)
+        # I3: no PENDING claim may exist on a non-OPEN bounty
+        self.assertFalse(Claim.objects.filter(bounty=bounty, status=ClaimStatus.PENDING).exists())
+        self.assertFalse(Claim.objects.filter(bounty=bounty, claimant=late).exists())
+
+    def wait_until_a_lock_request_is_waiting(self, timeout=10.0):
+        """Block until some backend is waiting on a lock (i.e. the worker reached the row we hold)."""
+        deadline = time.monotonic() + timeout
+        with connection.cursor() as cur:
+            while time.monotonic() < deadline:
+                cur.execute("SELECT count(*) FROM pg_locks WHERE NOT granted")
+                if cur.fetchone()[0]:
+                    return
+                time.sleep(0.01)
+        self.fail("worker never blocked on the bounty lock")
 
     def test_double_submit_claim_is_idempotent_not_a_crash(self):
         for _ in range(ITERATIONS):
