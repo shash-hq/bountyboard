@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
@@ -45,6 +46,51 @@ def _bounty_id_of_claim(claim_id: int) -> int:
     if bounty_id is None:
         raise InvalidTransition("Claim does not exist.")
     return bounty_id
+
+
+EDITABLE_FIELDS = ("title", "description", "category", "reward", "deadline")
+
+
+def create_bounty(poster, **fields) -> Bounty:
+    """Create a bounty, serializing the "max 5 OPEN per user" check.
+
+    Bounty.clean counts the poster's open bounties and then the row is inserted: two
+    concurrent creates can both count 4 and both insert (write skew -> 6 open). Locking the
+    poster's USER row first makes concurrent creates by the same poster take turns, so each
+    count sees the previous create's committed row. (No bounty exists yet, so there is no
+    bounty lock to take; the user lock is last in the bounty -> claims -> user order.)
+    """
+    User = get_user_model()
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=poster.pk)
+        bounty = Bounty(poster=poster, **fields)
+        bounty.save()  # full_clean() runs the cap check under the user lock
+    return bounty
+
+
+def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
+    """Poster edits an OPEN bounty's details.
+
+    Locks the bounty, re-checks that it is still OPEN and not expired AFTER the lock, and
+    writes ONLY the editable columns. The old view saved a full row from an unlocked read, so
+    a concurrent accept/cancel/hide was overwritten with stale status/accepted_claim/is_hidden.
+    """
+    unknown = set(fields) - set(EDITABLE_FIELDS)
+    if unknown:
+        raise TypeError(f"Not editable: {sorted(unknown)}")
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
+
+        if user != bounty.poster:
+            raise PermissionDenied("You do not have permission to edit this bounty.")
+        if bounty.status != BountyStatus.OPEN or bounty.is_expired:
+            raise InvalidTransition("Only active OPEN bounties can be edited.")
+
+        for name, value in fields.items():
+            setattr(bounty, name, value)
+        bounty.full_clean()
+        bounty.save(update_fields=[*fields, "updated_at"])
+    return bounty
 
 
 def create_claim(bounty_id: int, claimant, message: str, contact: str) -> Claim:
