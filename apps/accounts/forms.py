@@ -7,6 +7,20 @@ from django.core.exceptions import ValidationError
 User = get_user_model()
 
 
+def email_domain_allowed(email: str, allowed_domain: str) -> bool:
+    """True if the email's domain is exactly ``allowed_domain`` or a subdomain of it.
+
+    A bare ``endswith(domain)`` is wrong: "notiitb.ac.in" ends with "iitb.ac.in".
+    Requiring the "." boundary means only "iitb.ac.in" and "x.iitb.ac.in" pass.
+    Both sides are stripped and lowercased (DNS names are case-insensitive).
+    """
+    allowed = allowed_domain.strip().lower().lstrip("@")
+    domain = email.strip().lower().rpartition("@")[2]
+    if not allowed or not domain:
+        return False
+    return domain == allowed or domain.endswith("." + allowed)
+
+
 class SignupForm(forms.Form):
     username = forms.CharField(
         max_length=150,
@@ -55,8 +69,7 @@ class SignupForm(forms.Form):
         # Optional ALLOWED_EMAIL_DOMAIN restriction
         allowed_domain = getattr(settings, "ALLOWED_EMAIL_DOMAIN", "").strip()
         if allowed_domain:
-            domain_part = email.split("@")[-1]
-            if not domain_part.endswith(allowed_domain):
+            if not email_domain_allowed(email, allowed_domain):
                 raise ValidationError(
                     f"Only email addresses ending with '@{allowed_domain}' are permitted on this campus board."
                 )
