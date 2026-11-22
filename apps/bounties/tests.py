@@ -5,7 +5,7 @@ from django.contrib.auth.models import Group, Permission
 from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
-from django.db import DatabaseError, OperationalError, connection, transaction
+from django.db import DatabaseError, OperationalError, connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -516,22 +516,27 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
         errors = []
 
         def try_accept(claim_id):
-            connection.close()  # Ensure each thread has its own DB connection
             import time
-            for attempt in range(5):
-                try:
-                    c = accept_claim(claim_id, self.poster)
-                    results.append(c.id)
-                    return
-                except (OperationalError, DatabaseError) as e:
-                    if "locked" in str(e).lower() and attempt < 4:
-                        time.sleep(0.05)
-                        continue
-                    errors.append(e)
-                    return
-                except Exception as e:
-                    errors.append(e)
-                    return
+            try:
+                for attempt in range(5):
+                    try:
+                        c = accept_claim(claim_id, self.poster)
+                        results.append(c.id)
+                        return
+                    except (OperationalError, DatabaseError) as e:
+                        if "locked" in str(e).lower() and attempt < 4:
+                            time.sleep(0.05)
+                            continue
+                        errors.append(e)
+                        return
+                    except Exception as e:
+                        errors.append(e)
+                        return
+            finally:
+                # Each worker thread opens its own DB connection. Close it when the thread
+                # ends, otherwise it stays open and teardown cannot drop the test database
+                # ("database is being accessed by other users").
+                connections.close_all()
 
         t1 = threading.Thread(target=try_accept, args=(self.claim1.id,))
         t2 = threading.Thread(target=try_accept, args=(self.claim2.id,))
