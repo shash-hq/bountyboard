@@ -221,7 +221,7 @@ class BountyViewAndFilterTests(TestCase):
 
     def test_seed_demo_command(self):
         """Verify seed_demo runs cleanly without error."""
-        call_command("seed_demo")
+        call_command("seed_demo", allow_non_debug=True)  # the test runner forces DEBUG=False
         self.assertGreaterEqual(Bounty.objects.count(), 20)
         self.assertTrue(User.objects.filter(username="arjun_ece").exists())
 

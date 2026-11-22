@@ -140,10 +140,7 @@ The project ships ready-to-deploy with Gunicorn and WhiteNoise static asset comp
    - `ALLOWED_HOSTS=${{RAILWAY_PUBLIC_DOMAIN}}`
    - `CSRF_TRUSTED_ORIGINS=https://${{RAILWAY_PUBLIC_DOMAIN}}`
 5. Railway uses the included [`Procfile`](Procfile) to start Gunicorn and automatically runs migrations and static collection on release.
-6. Seed initial demo data: In Railway's web terminal, run:
-   ```bash
-   python manage.py seed_demo
-   ```
+6. Do **not** run `seed_demo` on a deployment: it is for local development and refuses to run when `DEBUG` is off. A real campus database starts empty.
 
 ### Deploying to Render
 1. Click **New &rarr; Blueprint** and connect your repository (or use [`render.yaml`](render.yaml)).
