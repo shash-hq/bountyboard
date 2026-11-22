@@ -13,7 +13,6 @@ from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
 from .notifications import send_claim_received_notification
 from .services import (
     accept_claim,
-    InvalidTransition,
     cancel_bounty,
     create_claim,
     hide_bounty,

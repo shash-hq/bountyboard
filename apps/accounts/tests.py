@@ -202,6 +202,12 @@ class EmailDomainGateTests(TestCase):
         self.assertTrue(self._signup_form("sam@iitb.ac.in", "sam3").is_valid())
         self.assertFalse(self._signup_form("eve@notiitb.ac.in", "eve2").is_valid())
 
+    @override_settings(ALLOWED_EMAIL_DOMAIN=".iitb.ac.in")
+    def test_leading_dot_setting_still_allows_domain_and_subdomains(self):
+        self.assertTrue(self._signup_form("sam@iitb.ac.in", "sam4").is_valid())
+        self.assertTrue(self._signup_form("sam@cse.iitb.ac.in", "sam5").is_valid())
+        self.assertFalse(self._signup_form("eve@notiitb.ac.in", "eve3").is_valid())
+
     def test_helper_edge_cases(self):
         from apps.accounts.forms import email_domain_allowed
 

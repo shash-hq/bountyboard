@@ -12,9 +12,11 @@ def email_domain_allowed(email: str, allowed_domain: str) -> bool:
 
     A bare ``endswith(domain)`` is wrong: "notiitb.ac.in" ends with "iitb.ac.in".
     Requiring the "." boundary means only "iitb.ac.in" and "x.iitb.ac.in" pass.
-    Both sides are stripped and lowercased (DNS names are case-insensitive).
+    Both sides are stripped and lowercased (DNS names are case-insensitive). A leading "@" or
+    "." on the configured value (".iitb.ac.in" is a common way to say "this domain and its
+    subdomains") is ignored.
     """
-    allowed = allowed_domain.strip().lower().lstrip("@")
+    allowed = allowed_domain.strip().lower().lstrip("@.")
     domain = email.strip().lower().rpartition("@")[2]
     if not allowed or not domain:
         return False
