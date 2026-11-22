@@ -2,13 +2,31 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'phase-*' ]
   pull_request:
     branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Tests target PostgreSQL, not SQLite: SQLite serializes writers and
+    # makes select_for_update a no-op, which hides the real races.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bountyboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/bountyboard
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
@@ -37,5 +55,5 @@ jobs:
 
     - name: Run Test Suite & Coverage
       run: |
-        coverage run manage.py test --settings=config.settings.dev
-        coverage report --fail-under=80
+        coverage run --branch manage.py test --settings=config.settings.dev
+        coverage report --fail-under=80 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
