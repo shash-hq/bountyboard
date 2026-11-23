@@ -179,13 +179,27 @@ def username_available(username: str, email: str) -> bool:
     return True
 
 
+EMAIL_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))"
+
+
 def _lock_email(email: str) -> None:
     """Serialize signups for one address. Locking the user row cannot do it: when no row exists
     yet there is nothing to lock. A transaction-scoped advisory lock on the lowercased address
-    covers both cases and is released at commit/rollback."""
-    if False:
+    covers both cases and is released at commit/rollback.
+
+    PostgreSQL only (advisory locks don't exist elsewhere); on any other backend the unique
+    constraints plus ``signup()``'s retry loop are the backstop. ``email`` must already be
+    lowercased (``signup`` does that), so ``A@x.com`` and ``a@x.com`` share one lock.
+
+    What the lock buys over the backstop alone: without it, two signups for an address held by an
+    unverified account both delete it and race to insert; the loser hits the constraint, retries,
+    finds the winner's brand-new account "unverified" and replaces it, so the winner's emailed link
+    dies a moment after it was sent. With the lock the second signup waits for the first to commit,
+    then sees the first's account and replaces it once, deterministically.
+    """
+    if connection.vendor == "postgresql":
         with connection.cursor() as cursor:
-            cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", [email])
+            cursor.execute(EMAIL_LOCK_SQL, [email])
 
 
 def _lookup_holder(email: str):
