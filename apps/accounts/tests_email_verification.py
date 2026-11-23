@@ -138,3 +138,33 @@ class ConfirmPageTests(TestCase):
     def test_post_with_garbage_token_is_400(self):
         response = self.client.post(reverse("accounts:verify_email", args=["garbage"]))
         self.assertEqual(response.status_code, 400)
+
+
+class VerifiedEmailMiddlewareTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            "member", "member@example.org", "pw-Str0ng-pass", email_verified_at=timezone.now()
+        )
+        self.me = reverse("me")
+
+    def test_verified_user_stays_logged_in(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(self.me).status_code, 200)
+
+    def test_user_who_loses_verification_mid_session_is_logged_out(self):
+        """e.g. a later change_email: the existing session must not outlive the verification."""
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(self.me).status_code, 200)
+        User.objects.filter(pk=self.user.pk).update(email_verified_at=None)
+        response = self.client.get(self.me)
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_session_of_a_never_verified_user_is_rejected(self):
+        unverified = User.objects.create_user("ghost", "ghost@example.org", "pw-Str0ng-pass")
+        self.client.force_login(unverified)
+        response = self.client.get(self.me)
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        follow = self.client.get(reverse("accounts:login"))
+        self.assertContains(follow, "Confirm your email to continue")

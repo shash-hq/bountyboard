@@ -1,6 +1,7 @@
 import threading
 from datetime import timedelta
 from django.contrib.auth import get_user_model
+from apps.accounts.testing import create_verified_user
 from django.contrib.auth.models import Group, Permission
 from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -35,7 +36,7 @@ User = get_user_model()
 
 class BountyModelAndTagTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
+        self.user = create_verified_user(
             username="arjun", email="arjun@campus.edu.in", password="Password123!"
         )
 
@@ -144,10 +145,10 @@ class BountyModelAndTagTests(TestCase):
 
 class BountyViewAndFilterTests(TestCase):
     def setUp(self):
-        self.user1 = User.objects.create_user(
+        self.user1 = create_verified_user(
             username="poster1", email="poster1@campus.edu.in", password="Password123!"
         )
-        self.user2 = User.objects.create_user(
+        self.user2 = create_verified_user(
             username="student2", email="student2@campus.edu.in", password="Password123!"
         )
         future = timezone.now() + timedelta(days=3)
@@ -228,13 +229,13 @@ class BountyViewAndFilterTests(TestCase):
 
 class ClaimsLifecycleAndPermissionDenialTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create_user(
+        self.poster = create_verified_user(
             username="poster", email="poster@campus.edu.in", password="Password123!"
         )
-        self.claimant1 = User.objects.create_user(
+        self.claimant1 = create_verified_user(
             username="claimant1", email="claimant1@campus.edu.in", password="Password123!"
         )
-        self.claimant2 = User.objects.create_user(
+        self.claimant2 = create_verified_user(
             username="claimant2", email="claimant2@campus.edu.in", password="Password123!"
         )
         self.bounty = Bounty.objects.create(
@@ -483,13 +484,13 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
     Tests for race condition prevention during claim acceptance using select_for_update.
     """
     def setUp(self):
-        self.poster = User.objects.create_user(
+        self.poster = create_verified_user(
             username="race_poster", email="race_poster@campus.edu.in", password="Password123!"
         )
-        self.c1_user = User.objects.create_user(
+        self.c1_user = create_verified_user(
             username="race_c1", email="race_c1@campus.edu.in", password="Password123!"
         )
-        self.c2_user = User.objects.create_user(
+        self.c2_user = create_verified_user(
             username="race_c2", email="race_c2@campus.edu.in", password="Password123!"
         )
         self.bounty = Bounty.objects.create(
@@ -569,13 +570,13 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
         self.assertEqual(rejected_count, 1)
 class SessionAndCookieFeatureTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
+        self.user = create_verified_user(
             username="session_tester", email="session@campus.edu.in", password="Password123!"
         )
         future = timezone.now() + timedelta(days=5)
         self.bounties = []
         for i in range(7):
-            poster = User.objects.create_user(
+            poster = create_verified_user(
                 username=f"poster_user_{i+1}",
                 email=f"poster{i+1}@campus.edu.in",
                 password="Password123!",
@@ -647,13 +648,13 @@ class SessionAndCookieFeatureTests(TestCase):
 
 class ModeratorWorkflowTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create_user(
+        self.poster = create_verified_user(
             username="poster_student", email="poster@campus.edu.in", password="Password123!"
         )
-        self.student = User.objects.create_user(
+        self.student = create_verified_user(
             username="random_student", email="student@campus.edu.in", password="Password123!"
         )
-        self.mod_user = User.objects.create_user(
+        self.mod_user = create_verified_user(
             username="campus_admin", email="admin@campus.edu.in", password="Password123!"
         )
 

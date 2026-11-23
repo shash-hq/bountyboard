@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from apps.accounts.testing import create_verified_user
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
@@ -22,11 +23,11 @@ POSTER_EMAIL = "poster.private@example.org"
 
 class ContactDisclosureTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create(username="cposter", email=POSTER_EMAIL)
-        self.c1 = User.objects.create(username="cclaimant1", email=EMAIL_1)
-        self.c2 = User.objects.create(username="cclaimant2", email=EMAIL_2)
-        self.stranger = User.objects.create(username="cstranger", email="stranger@example.org")
-        self.moderator = User.objects.create(username="cmod", email="mod@example.org")
+        self.poster = create_verified_user(username="cposter", email=POSTER_EMAIL)
+        self.c1 = create_verified_user(username="cclaimant1", email=EMAIL_1)
+        self.c2 = create_verified_user(username="cclaimant2", email=EMAIL_2)
+        self.stranger = create_verified_user(username="cstranger", email="stranger@example.org")
+        self.moderator = create_verified_user(username="cmod", email="mod@example.org")
         self.moderator.user_permissions.add(Permission.objects.get(codename="moderate"))
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Contact disclosure bounty", description="x" * 30,
@@ -101,9 +102,9 @@ class ContactDisclosureTests(TestCase):
 
 class ContactPolicyUnitTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create(username="upposter", email="p@example.org")
-        self.c1 = User.objects.create(username="upc1", email="c1@example.org")
-        self.other = User.objects.create(username="upother", email="o@example.org")
+        self.poster = create_verified_user(username="upposter", email="p@example.org")
+        self.c1 = create_verified_user(username="upc1", email="c1@example.org")
+        self.other = create_verified_user(username="upother", email="o@example.org")
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Policy unit bounty", description="x" * 30,
             reward=100, deadline=timezone.now() + timedelta(days=2),
