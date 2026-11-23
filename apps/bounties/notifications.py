@@ -5,6 +5,11 @@ from django.core.mail import send_mail
 logger = logging.getLogger(__name__)
 
 
+def absolute_url(path: str) -> str:
+    """Absolute link for emails. The host comes from settings.SITE_URL, never from a literal."""
+    return settings.SITE_URL.rstrip("/") + path
+
+
 def send_claim_received_notification(claim):
     """Notify the bounty poster that a student has submitted a new claim."""
     poster = claim.bounty.poster
@@ -18,7 +23,7 @@ def send_claim_received_notification(claim):
         f"Their pitch:\n"
         f"\"{claim.message}\"\n\n"
         f"Log in to review their claim and accept or reject it:\n"
-        f"https://bountyboard.campus/bounties/{claim.bounty.pk}/{claim.bounty.slug}/\n\n"
+        f"{absolute_url(claim.bounty.get_absolute_url())}\n\n"
         f"— Bounty Board Campus Marketplace"
     )
     try:
@@ -77,7 +82,7 @@ def send_claim_rejected_notification(claim):
         f"Hi {claimant.username},\n\n"
         f"The poster has closed claims on '{claim.bounty.title}' or accepted another peer's proposal.\n\n"
         f"Check out other live bounties on the campus board:\n"
-        f"https://bountyboard.campus/\n\n"
+        f"{absolute_url('/')}\n\n"
         f"— Bounty Board Campus Marketplace"
     )
     try:

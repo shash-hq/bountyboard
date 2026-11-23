@@ -132,8 +132,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Auth Redirects
 LOGIN_URL = "accounts:login"
-LOGIN_REDIRECT_URL = "pages:board"
-LOGOUT_REDIRECT_URL = "pages:board"
+LOGIN_REDIRECT_URL = "board"  # root URLconf name for "/"; "pages:board" does not exist
+LOGOUT_REDIRECT_URL = "board"
 
 # Messages framework - map to neo-brutalist alert styles
 from django.contrib.messages import constants as messages
