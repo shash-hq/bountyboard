@@ -65,4 +65,4 @@ jobs:
     - name: Run Test Suite & Coverage
       run: |
         coverage run --branch manage.py test --settings=config.settings.dev
-        coverage report --fail-under=85 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
+        coverage report --fail-under=87 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
