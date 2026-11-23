@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Email | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card brutal-card--mint">
+    <span class="stamp-badge stamp-open">ONE LAST STEP</span>
+    <h1 class="page-title">CONFIRM YOUR EMAIL</h1>
+    <p>Press the button to confirm this address and activate your account.</p>
+    <form method="post" action="{% url 'accounts:verify_email' token %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary btn-block">CONFIRM EMAIL &rarr;</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

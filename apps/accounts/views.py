@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 from django.contrib.auth import views as auth_views
 from django.utils.decorators import method_decorator
@@ -12,6 +13,7 @@ from django_ratelimit.exceptions import Ratelimited
 
 from apps.bounties.models import Bounty, Claim
 from .forms import LoginForm, SignupForm
+from .services import InvalidToken, confirm_email
 from .ratelimits import login_identifier, rate, reset_email
 
 User = get_user_model()
@@ -37,6 +39,25 @@ def signup_view(request):
         form = SignupForm()
 
     return render(request, "accounts/signup.html", {"form": form})
+
+
+@never_cache
+@require_http_methods(["GET", "POST"])
+def verify_email_view(request, token):
+    """Email-verification landing page.
+
+    GET only renders a button. Mail clients and link scanners (Gmail, Outlook SafeLinks)
+    prefetch every URL in a message, so a GET that consumed the token would burn it before the
+    human ever clicked. Only the POST, which scanners do not send, confirms.
+    """
+    if request.method == "POST":
+        try:
+            confirm_email(token)
+        except InvalidToken:
+            return render(request, "accounts/verify_email_invalid.html", status=400)
+        messages.success(request, "Email confirmed. You can log in now.")
+        return redirect("accounts:login")
+    return render(request, "accounts/verify_email.html", {"token": token})
 
 
 def _login_failure_limit(request, increment):

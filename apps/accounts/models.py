@@ -25,6 +25,11 @@ class User(AbstractUser):
     # Required (AbstractUser makes it blank=True).
     email = models.EmailField("email address")
     email_verified_at = models.DateTimeField(null=True, blank=True)
+    # Stateful email-verification token: only the sha256 of the emailed value is stored, so a
+    # DB leak yields no usable links. One live token per user: a resend overwrites it, and a
+    # successful confirm nulls it (single-use). See apps/accounts/services.py.
+    email_token_hash = models.CharField(max_length=64, null=True, blank=True, editable=False)
+    email_token_expires_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     objects = BountyUserManager()
 

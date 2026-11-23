@@ -147,6 +147,9 @@ MESSAGE_TAGS = {
     messages.ERROR: "danger",
 }
 
+# How long an emailed verification link stays valid.
+EMAIL_VERIFICATION_TTL_HOURS = 24
+
 # Email backend default
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="BountyBoard <notifications@bountyboard.campus>")
@@ -166,6 +169,10 @@ RATE_LIMITS = {
     "signup_per_ip": "200/h",
     "password_reset_per_email": "3/h",
     "password_reset_per_ip": "30/h",
+    # Resending a verification link sends email (300/day budget): limit per mailbox and per IP.
+    # Applied whether or not the address has an account, so responses stay identical.
+    "verify_resend_per_email": "3/h",
+    "verify_resend_per_ip": "30/h",
 }
 
 # Cache backend (LocMem for dev & rate limiting)
