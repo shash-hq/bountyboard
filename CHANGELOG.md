@@ -6,12 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **`render.yaml`**: Render Blueprint for a free web service in Singapore (1 worker x 4 threads, migrations at build time, `/healthz` health check). Validated against Render's published schema and checked against `config/settings/prod.py` by tests; not yet deployed.
+
+---
+
 ## [1.0.0] - 2026-11-14
 
 ### Launch Release
 - **Production Documentation**: Complete README with value proposition, browser-captured screenshots, 5-command local setup, deployment guides for Railway and Render, environment variable catalog, and full 6-Unit Django Syllabus Map.
 - **Verification**: 51 automated tests passing with 88% project-wide test coverage and zero N+1 queries.
-- **Live Readiness**: Deployment artifacts (`Procfile`, `release.sh`, `render.yaml`) verified with `python manage.py check --deploy`.
+- **Live Readiness**: Deployment artifacts (`Procfile`, `release.sh`) verified with `python manage.py check --deploy`. (`render.yaml` was listed here but did not exist; it was added afterwards, see Unreleased.)
 
 ---
 
