@@ -60,7 +60,8 @@ class AnonymousAccessTests(TestCase):
                      "accounts:login", "accounts:signup", "accounts:resend_verification",
                      "accounts:password_reset", "pages:healthz", "pages:robots_txt", "sitemap"]:
             self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
-        self.assertEqual(self.client.get(reverse("accounts:verify_email", args=["tok"])).status_code, 200)
+        # reachable anonymously: a bad link gets the "link not valid" page (400), not a login redirect
+        self.assertEqual(self.client.get(reverse("accounts:verify_email", args=[1, "tok"])).status_code, 400)
 
     def test_board_detail_and_actions_require_login(self):
         gets = [reverse("board"), self.bounty.get_absolute_url(), reverse("me"), reverse("bounties:create"),

@@ -4,6 +4,8 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
+from .services import username_available
+
 User = get_user_model()
 
 
@@ -58,15 +60,12 @@ class SignupForm(forms.Form):
     )
 
     def clean_username(self):
-        username = self.cleaned_data["username"].strip()
-        if User.objects.filter(username__iexact=username).exists():
-            raise ValidationError("This username is already taken. Pick a different handle.")
-        return username
+        return self.cleaned_data["username"].strip()
 
     def clean_email(self):
+        # No uniqueness check here on purpose: telling a stranger "this address already has an
+        # account" is an enumeration oracle. services.signup() handles an address that is in use.
         email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
-            raise ValidationError("An account with this email already exists.")
 
         # Optional ALLOWED_EMAIL_DOMAIN restriction
         allowed_domain = getattr(settings, "ALLOWED_EMAIL_DOMAIN", "").strip()
@@ -79,6 +78,9 @@ class SignupForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
+        username, email = cleaned_data.get("username"), cleaned_data.get("email")
+        if username and email and not username_available(username, email):
+            self.add_error("username", "This username is already taken. Pick a different handle.")
         p1 = cleaned_data.get("password")
         p2 = cleaned_data.get("password_confirm")
 
@@ -88,6 +90,16 @@ class SignupForm(forms.Form):
             else:
                 validate_password(p1)
         return cleaned_data
+
+
+class ConfirmEmailForm(forms.Form):
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={
+            "class": "input-text",
+            "placeholder": "The password you chose at signup",
+            "autocomplete": "current-password",
+        }),
+    )
 
 
 class ResendVerificationForm(forms.Form):

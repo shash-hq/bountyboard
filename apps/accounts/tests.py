@@ -49,30 +49,12 @@ class AccountsAuthTests(TestCase):
                     "password_confirm": "SecretPassword123!",
                 },
             )
-        token = re.search(r"/verify-email/([\w-]+)/", mail.outbox[0].body).group(1)
-        self.client.post(reverse("accounts:verify_email", args=[token]))
+        uid, token = re.search(r"/verify-email/(\d+)/([\w-]+)/", mail.outbox[0].body).groups()
         response = self.client.post(
-            reverse("accounts:login"),
-            {"username_or_email": "newstudent", "password": "SecretPassword123!"},
-            follow=True,
+            reverse("accounts:verify_email", args=[uid, token]), {"password": "SecretPassword123!"}, follow=True
         )
+        self.assertRedirects(response, reverse("board"))
         self.assertEqual(response.context["user"].username, "newstudent")
-
-    def test_signup_duplicate_email_denial(self):
-        """Verify signup is denied if email already exists."""
-        response = self.client.post(
-            reverse("accounts:signup"),
-            {
-                "username": "anotheruser",
-                "email": "testuser@campus.edu.in",  # Duplicate email
-                "password": "SecretPassword123!",
-                "password_confirm": "SecretPassword123!",
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(
-            response.context["form"], "email", "An account with this email already exists."
-        )
 
     def test_signup_duplicate_username_denial(self):
         """Verify signup is denied if username already exists."""

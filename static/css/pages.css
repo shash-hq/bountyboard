@@ -438,3 +438,9 @@
   font-weight: 700;
   margin-bottom: var(--spacing-8);
 }
+
+/* Confirm-email page asides */
+.confirm-aside {
+  margin-top: var(--spacing-4);
+  font-size: var(--text-sm);
+}

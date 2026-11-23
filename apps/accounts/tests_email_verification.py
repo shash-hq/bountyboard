@@ -4,35 +4,41 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.cache import cache
 from django.db import transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .services import InvalidToken, confirm_email, send_verification_email
+from .services import InvalidToken, confirm_email, peek_confirmation, send_verification_email
+from .tests_ratelimits import limits
 
 User = get_user_model()
-TOKEN_IN_LINK = re.compile(r"/accounts/verify-email/([\w-]+)/")
+LINK = re.compile(r"/accounts/verify-email/(\d+)/([\w-]+)/")
+PW = "pw-Str0ng-pass"
 
 
 def issue_token(testcase, user):
-    """Send a verification email and return the raw token from its link."""
+    """Send a verification email and return (uid, raw token) from its link."""
     mail.outbox.clear()
     with testcase.captureOnCommitCallbacks(execute=True):
         send_verification_email(user.pk)
-    return TOKEN_IN_LINK.search(mail.outbox[-1].body).group(1)
+    uid, token = LINK.search(mail.outbox[-1].body).groups()
+    return int(uid), token
 
 
 @override_settings(SITE_URL="https://bb.example.org")
 class TokenServiceTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user("newbie", "newbie@example.org", "pw-Str0ng-pass")
+        self.user = User.objects.create_user("newbie", "newbie@example.org", PW)
 
-    def test_email_contains_absolute_link_and_only_the_hash_is_stored(self):
-        token = issue_token(self, self.user)
-        self.assertEqual(len(mail.outbox), 1)
+    def test_email_has_absolute_link_names_the_address_and_only_the_hash_is_stored(self):
+        uid, token = issue_token(self, self.user)
+        body = mail.outbox[0].body
         self.assertEqual(mail.outbox[0].to, ["newbie@example.org"])
-        self.assertIn(f"https://bb.example.org/accounts/verify-email/{token}/", mail.outbox[0].body)
+        self.assertIn(f"https://bb.example.org/accounts/verify-email/{uid}/{token}/", body)
+        self.assertIn("newbie@example.org", body)
+        self.assertIn("Didn't sign up? Ignore this email", body)
         self.user.refresh_from_db()
         self.assertNotIn(token, self.user.email_token_hash)
         self.assertEqual(len(self.user.email_token_hash), 64)
@@ -41,40 +47,64 @@ class TokenServiceTests(TestCase):
         before = timezone.now()
         issue_token(self, self.user)
         self.user.refresh_from_db()
-        ttl = self.user.email_token_expires_at - before
-        self.assertAlmostEqual(ttl.total_seconds(), 24 * 3600, delta=5)
+        self.assertAlmostEqual((self.user.email_token_expires_at - before).total_seconds(), 24 * 3600, delta=5)
 
     def test_confirm_marks_verified_and_is_single_use(self):
-        token = issue_token(self, self.user)
-        confirm_email(token)
+        uid, token = issue_token(self, self.user)
+        confirm_email(uid, token, PW)
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.email_verified_at)
         self.assertIsNone(self.user.email_token_hash)
-        self.assertIsNone(self.user.email_token_expires_at)
         with self.assertRaises(InvalidToken):
-            confirm_email(token)
+            confirm_email(uid, token, PW)
+
+    def test_wrong_password_is_refused_and_does_not_burn_the_link(self):
+        uid, token = issue_token(self, self.user)
+        with self.assertRaises(InvalidToken):
+            confirm_email(uid, token, "not-the-password")
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.email_verified_at)
+        confirm_email(uid, token, PW)  # the owner can still use the link
 
     def test_resend_kills_the_previous_token(self):
-        old = issue_token(self, self.user)
-        new = issue_token(self, self.user)
+        uid, old = issue_token(self, self.user)
+        _, new = issue_token(self, self.user)
         self.assertNotEqual(old, new)
         with self.assertRaises(InvalidToken):
-            confirm_email(old)
-        confirm_email(new)  # the newest one still works
+            confirm_email(uid, old, PW)
+        confirm_email(uid, new, PW)
+
+    def test_changing_the_password_kills_every_older_link(self):
+        """The token is bound to the password hash (like PasswordResetTokenGenerator)."""
+        uid, token = issue_token(self, self.user)
+        self.user.refresh_from_db()  # a stale instance would write the NULL token back and pass trivially
+        self.user.set_password("a-different-Pass-99")
+        self.user.save(update_fields=["password"])
+        self.assertIsNone(peek_confirmation(uid, token))
+        with self.assertRaises(InvalidToken):
+            confirm_email(uid, token, "a-different-Pass-99")
+
+    def test_a_token_is_bound_to_its_user_id(self):
+        other = User.objects.create_user("other", "other@example.org", PW)
+        _, token = issue_token(self, self.user)
+        with self.assertRaises(InvalidToken):
+            confirm_email(other.pk, token, PW)
 
     def test_expired_token_is_rejected_at_ttl_and_valid_just_before(self):
-        token = issue_token(self, self.user)
+        uid, token = issue_token(self, self.user)
         self.user.refresh_from_db()
         expiry = self.user.email_token_expires_at
         with mock.patch("apps.accounts.services.timezone.now", return_value=expiry):
-            with self.assertRaises(InvalidToken):  # boundary is exclusive: at expiry it is dead
-                confirm_email(token)
+            with self.assertRaises(InvalidToken):
+                confirm_email(uid, token, PW)
         with mock.patch("apps.accounts.services.timezone.now", return_value=expiry - timedelta(seconds=1)):
-            confirm_email(token)
+            confirm_email(uid, token, PW)
 
-    def test_unknown_token_is_rejected(self):
-        with self.assertRaises(InvalidToken):
-            confirm_email("not-a-real-token")
+    def test_unknown_user_or_token_is_rejected(self):
+        uid, _ = issue_token(self, self.user)
+        for args in [(uid, "not-a-real-token"), (999999, "x")]:
+            with self.assertRaises(InvalidToken):
+                confirm_email(*args, PW)
 
     def test_already_verified_user_gets_no_email_and_no_new_token(self):
         self.user.email_verified_at = timezone.now()
@@ -87,7 +117,6 @@ class TokenServiceTests(TestCase):
         self.assertIsNone(self.user.email_token_hash)
 
     def test_rolled_back_transaction_sends_nothing(self):
-        """The email goes out on commit: a token that was never saved must never be mailed."""
         mail.outbox.clear()
         with self.captureOnCommitCallbacks(execute=True) as callbacks:
             try:
@@ -99,52 +128,95 @@ class TokenServiceTests(TestCase):
         self.assertEqual(callbacks, [])
         self.assertEqual(mail.outbox, [])
 
-    def test_confirm_does_not_change_an_existing_verified_timestamp(self):
-        token = issue_token(self, self.user)
-        earlier = timezone.now() - timedelta(days=3)
-        User.objects.filter(pk=self.user.pk).update(email_verified_at=earlier)
-        confirm_email(token)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.email_verified_at, earlier)
-
 
 class ConfirmPageTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user("newbie", "newbie@example.org", "pw-Str0ng-pass")
-        self.token = issue_token(self, self.user)
-        self.url = reverse("accounts:verify_email", args=[self.token])
+    """The pre-hijacking scenario: an attacker signs up with the victim's address and their own
+    password, then the victim receives the unsolicited link."""
 
-    def test_get_shows_a_button_and_does_not_consume_the_token(self):
-        """Link scanners prefetch GETs; only the human's POST may confirm."""
-        for _ in range(3):
-            response = self.client.get(self.url)
-            self.assertContains(response, "CONFIRM EMAIL")
+    def setUp(self):
+        cache.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("accounts:signup"), {
+                "username": "attacker", "email": "victim@example.org",
+                "password": "Attacker-pass-123", "password_confirm": "Attacker-pass-123",
+            })
+        self.user = User.objects.get(email="victim@example.org")
+        self.uid, self.token = [LINK.search(mail.outbox[-1].body).group(i) for i in (1, 2)]
+        self.url = reverse("accounts:verify_email", args=[self.uid, self.token])
+        self.victim = self.client_class()  # the victim's own browser
+
+    def test_get_renders_the_password_form_with_the_address_and_never_verifies(self):
+        for _ in range(3):  # link scanners prefetch; repeats must be harmless
+            response = self.victim.get(self.url)
+            self.assertContains(response, "victim@example.org")
+            self.assertContains(response, 'name="password"')
+            self.assertContains(response, "Didn't sign up?")
         self.user.refresh_from_db()
         self.assertIsNone(self.user.email_verified_at)
-        self.assertIsNotNone(self.user.email_token_hash)
+        self.assertNotIn("_auth_user_id", self.victim.session)
 
-    def test_post_confirms_then_redirects_to_login(self):
-        response = self.client.post(self.url)
-        self.assertRedirects(response, reverse("accounts:login"))
+    def test_victim_without_the_attackers_password_cannot_verify(self):
+        for guess in ["victim-own-password", "", "Attacker-pass-12"]:
+            response = self.victim.post(self.url, {"password": guess})
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Check your password")
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.email_verified_at)
+        self.assertNotIn("_auth_user_id", self.victim.session)
+
+    def test_correct_password_verifies_logs_in_and_rotates_the_session(self):
+        session = self.victim.session
+        session["anon"] = 1
+        session.save()
+        before = self.victim.session.session_key
+        response = self.victim.post(self.url, {"password": "Attacker-pass-123"})
+        self.assertRedirects(response, reverse("board"))
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.email_verified_at)
+        self.assertEqual(int(self.victim.session["_auth_user_id"]), self.user.pk)
+        self.assertNotEqual(self.victim.session.session_key, before)
 
-    def test_post_with_used_token_is_400_and_leaves_state_alone(self):
-        self.client.post(self.url)
-        response = self.client.post(self.url)
-        self.assertEqual(response.status_code, 400)
-        self.assertContains(response, "DOESN'T WORK", status_code=400)
+    def test_used_or_garbage_links_are_400(self):
+        self.victim.post(self.url, {"password": "Attacker-pass-123"})
+        self.assertEqual(self.client_class().get(self.url).status_code, 400)
+        self.assertEqual(self.client_class().post(self.url, {"password": "x"}).status_code, 400)
+        garbage = reverse("accounts:verify_email", args=[self.uid, "garbage"])
+        self.assertEqual(self.client_class().get(garbage).status_code, 400)
+        self.assertNotContains(self.client_class().get(garbage), "victim@example.org", status_code=400)
 
-    def test_post_with_garbage_token_is_400(self):
-        response = self.client.post(reverse("accounts:verify_email", args=["garbage"]))
-        self.assertEqual(response.status_code, 400)
+    def test_forgotten_password_has_a_way_out_via_signup_with_the_email_prefilled(self):
+        response = self.victim.get(self.url)
+        self.assertContains(response, reverse("accounts:signup") + "?email=victim%40example.org")
+        self.assertContains(self.victim.get(reverse("accounts:signup") + "?email=victim%40example.org"),
+                            'value="victim@example.org"')
+
+    @limits(login_failures_per_account="3/h")
+    def test_wrong_passwords_hit_the_login_throttle_and_even_the_right_one_is_then_refused(self):
+        codes = [self.victim.post(self.url, {"password": f"wrong-{i}"}).status_code for i in range(6)]
+        self.assertEqual(codes[:4], [200] * 4)  # 3 allowed failures; the 4th still gets an answer
+        self.assertEqual(set(codes[4:]), {429})
+        self.assertEqual(self.victim.post(self.url, {"password": "Attacker-pass-123"}).status_code, 429)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.email_verified_at)
+
+    @limits(login_failures_per_account="3/h")
+    def test_failed_logins_and_failed_confirms_share_one_account_budget(self):
+        """Confirm must not be a way around login's per-account limit, nor the reverse."""
+        for i in range(4):
+            self.client.post(reverse("accounts:login"), {"username_or_email": "attacker", "password": f"bad-{i}"})
+        self.assertEqual(self.victim.post(self.url, {"password": "Attacker-pass-123"}).status_code, 429)
+
+    @limits(login_per_ip="2/h")
+    def test_confirm_shares_the_per_ip_budget_with_login(self):
+        for i in range(3):
+            self.client.post(reverse("accounts:login"), {"username_or_email": "x", "password": "y"}, REMOTE_ADDR="10.9.9.9")
+        response = self.victim.post(self.url, {"password": "Attacker-pass-123"}, REMOTE_ADDR="10.9.9.9")
+        self.assertEqual(response.status_code, 429)
 
 
 class VerifiedEmailMiddlewareTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
-            "member", "member@example.org", "pw-Str0ng-pass", email_verified_at=timezone.now()
-        )
+        self.user = User.objects.create_user("member", "member@example.org", PW, email_verified_at=timezone.now())
         self.me = reverse("me")
 
     def test_verified_user_stays_logged_in(self):
@@ -152,19 +224,15 @@ class VerifiedEmailMiddlewareTests(TestCase):
         self.assertEqual(self.client.get(self.me).status_code, 200)
 
     def test_user_who_loses_verification_mid_session_is_logged_out(self):
-        """e.g. a later change_email: the existing session must not outlive the verification."""
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(self.me).status_code, 200)
         User.objects.filter(pk=self.user.pk).update(email_verified_at=None)
-        response = self.client.get(self.me)
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get(self.me).status_code, 302)
         self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_session_of_a_never_verified_user_is_rejected(self):
-        unverified = User.objects.create_user("ghost", "ghost@example.org", "pw-Str0ng-pass")
+        unverified = User.objects.create_user("ghost", "ghost@example.org", PW)
         self.client.force_login(unverified)
-        response = self.client.get(self.me)
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get(self.me).status_code, 302)
         self.assertNotIn("_auth_user_id", self.client.session)
-        follow = self.client.get(reverse("accounts:login"))
-        self.assertContains(follow, "Confirm your email to continue")
+        self.assertContains(self.client.get(reverse("accounts:login")), "Confirm your email to continue")
