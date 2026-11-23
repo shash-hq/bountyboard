@@ -43,6 +43,12 @@ REG_NO_HMAC_KEY = env("REG_NO_HMAC_KEY", default="")
 CARD_NAME_KEYS = env.list("CARD_NAME_KEYS", default=[])
 # What a normalized registration number must look like (after stripping spaces and dashes).
 REG_NO_PATTERN = env("REG_NO_PATTERN", default=r"^\d{8}$")
+# Exact-match email domains that count as campus addresses. NOT a suffix match: "notlpu.co.in" and
+# "lpu.co.in.evil.com" must not pass. Used only to auto-verify at email confirmation (never to gate
+# signup, and never as a role signal: students and staff both have these addresses).
+ALLOWED_CAMPUS_DOMAINS = [
+    d.strip().lower().lstrip("@") for d in env.list("ALLOWED_CAMPUS_DOMAINS", default=["lpu.co.in"]) if d.strip()
+]
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 

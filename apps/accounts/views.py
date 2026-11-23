@@ -15,6 +15,8 @@ from django_ratelimit.exceptions import Ratelimited
 from apps.bounties.models import Bounty, Claim
 from .forms import ConfirmEmailForm, LoginForm, ResendVerificationForm, SignupForm
 from .ratelimits import confirm_account, login_identifier, rate, reset_email
+from .campus import needs_reg_no
+from .identity import InvalidRegNo
 from .services import InvalidToken, UsernameTaken, confirm_email, peek_confirmation, send_verification_email, signup
 
 User = get_user_model()
@@ -64,15 +66,24 @@ def verify_email_view(request, uid, token):
     user = peek_confirmation(uid, token)
     if user is None:
         return render(request, "accounts/verify_email_invalid.html", status=400)
-    context = {"form": ConfirmEmailForm(), "email": user.email, "uid": uid, "token": token}
+    ask_reg_no = needs_reg_no(user)
+    context = {"form": ConfirmEmailForm(ask_reg_no=ask_reg_no), "email": user.email, "uid": uid, "token": token}
 
     if request.method == "POST":
         if _login_failure_limit(request, increment=False, key=confirm_account):
             raise Ratelimited()
-        form = ConfirmEmailForm(request.POST)
+        form = ConfirmEmailForm(request.POST, ask_reg_no=ask_reg_no)
+        context["form"] = form
         if form.is_valid():
             try:
-                confirmed = confirm_email(uid, token, form.cleaned_data["password"])
+                confirmed = confirm_email(
+                    uid, token, form.cleaned_data["password"], form.cleaned_data.get("reg_no", "")
+                )
+            except InvalidRegNo:
+                # Only reachable after the password was right, so it is not a failed login attempt
+                # and doesn't count against the throttle.
+                form.add_error("reg_no", InvalidRegNo.messages[0])
+                return render(request, "accounts/verify_email.html", context)
             except InvalidToken:
                 pass
             else:

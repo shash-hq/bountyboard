@@ -101,6 +101,26 @@ class ConfirmEmailForm(forms.Form):
         }),
     )
 
+    def __init__(self, *args, ask_reg_no=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if ask_reg_no:
+            self.fields["reg_no"] = RegNoField()
+
+
+class RegNoField(forms.CharField):
+    """Registration number, collected only on the campus-email path."""
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            label="Registration number",
+            max_length=32,
+            widget=forms.TextInput(attrs={
+                "class": "input-text", "placeholder": "e.g. 12345678",
+                "inputmode": "numeric", "autocomplete": "off",
+            }),
+            **kwargs,
+        )
+
 
 class ResendVerificationForm(forms.Form):
     email = forms.EmailField(

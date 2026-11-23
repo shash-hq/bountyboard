@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from apps.bounties.notifications import absolute_url
 
+from . import campus
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ def peek_confirmation(uid: int, token: str):
     return None
 
 
-def confirm_email(uid: int, token: str, password: str) -> User:
+def confirm_email(uid: int, token: str, password: str, reg_no: str = "") -> User:
     """Consume the link and mark the email verified, if the password is right. Raises
     ``InvalidToken`` for any failure.
 
@@ -114,6 +115,11 @@ def confirm_email(uid: int, token: str, password: str) -> User:
     The row is locked (``SELECT ... FOR UPDATE``) and the token re-checked under the lock, so a
     concurrent second confirm blocks, then sees the hash nulled and fails (single-use). A wrong
     password does NOT consume the token, otherwise anyone holding the link could burn it.
+
+    For an exact-match campus address this also creates the CAMPUS_EMAIL verification, in the same
+    transaction as the confirmation, so a user is never "confirmed but half-verified". A missing or
+    malformed ``reg_no`` raises ``InvalidRegNo`` only after the password checked out (so it can't be
+    used to probe an account) and before anything is written, leaving the token unconsumed.
     """
     with transaction.atomic():
         user = User.objects.select_for_update().filter(pk=uid, is_active=True).first()
@@ -122,6 +128,7 @@ def confirm_email(uid: int, token: str, password: str) -> User:
             raise InvalidToken
         if not user.check_password(password):
             raise InvalidToken
+        campus.verify_campus_email(user, reg_no, now)  # may raise InvalidRegNo: nothing written yet
         user.email_verified_at = now
         user.email_token_hash = None
         user.email_token_expires_at = None
