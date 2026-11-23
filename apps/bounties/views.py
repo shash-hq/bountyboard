@@ -8,6 +8,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from config.http import safe_referer
+
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
 from .notifications import send_claim_received_notification
@@ -387,10 +389,8 @@ def bounty_toggle_hide_view(request, pk):
     else:
         messages.success(request, f"Bounty '{bounty.title}' is now visible on public board.")
 
-    referer = request.META.get("HTTP_REFERER")
-    if referer and ("mod" in referer or "bounties" in referer):
-        return redirect(referer)
-    return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+    # Back to the page the moderator came from (mod queue or a bounty page), never off-site.
+    return redirect(safe_referer(request, fallback=bounty.get_absolute_url(), path_prefix="/bounties/"))
 
 
 @require_POST
