@@ -50,30 +50,48 @@ def needs_reg_no(user) -> bool:
     return campus_email_allowed(user.email) and not StudentIdentity.objects.filter(user=user).exists()
 
 
-def _bind_identity(user, reg_no: str, now):
-    """Bind ``reg_no`` to ``user``, or flag a collision for moderators. Never blocks.
+def bind_identity(user, digest, last4, source, now):
+    """Bind a registration-number digest to ``user``, or flag a collision. Never blocks.
+
+    Returns the new ``StudentIdentity``, or ``None`` if the digest is already bound to someone else
+    (an ``IdentityReview`` is opened instead). The caller must hold the user row lock and know the
+    user has no binding yet.
 
     The insert runs in a savepoint. Without it, a unique violation on ``reg_no_hmac`` would abort
     the surrounding transaction (Postgres: "current transaction is aborted") and the verification
     that follows would be lost, so a mistyped or squatted number could lock out the real owner.
     """
-    digest, last4 = hash_reg_no(reg_no)
     try:
         with transaction.atomic():
-            StudentIdentity.objects.create(
-                user=user, reg_no_hmac=digest, reg_no_last4=last4,
-                source=IdentitySource.SELF_DECLARED, bound_at=now,
+            return StudentIdentity.objects.create(
+                user=user, reg_no_hmac=digest, reg_no_last4=last4, source=source, bound_at=now,
             )
-        return
     except IntegrityError:
-        pass
-    holder = StudentIdentity.objects.filter(reg_no_hmac=digest).first()
-    # The user row is locked, so no concurrent confirm can add a second open review for them.
-    if not IdentityReview.objects.filter(claimant=user, status="OPEN").exists():
-        IdentityReview.objects.create(
-            claimant=user, existing_identity=holder, claimed_hmac=digest, claimed_last4=last4,
-            claimant_source=IdentitySource.SELF_DECLARED, created_at=now,
-        )
+        holder = StudentIdentity.objects.filter(reg_no_hmac=digest).first()
+        open_review(user, holder, digest, last4, source, now)
+        return None
+
+
+def open_review(claimant, existing_identity, digest, last4, source, now):
+    """Open an IdentityReview unless the claimant already has one open.
+
+    The user row is locked, so two concurrent callers cannot both insert; the partial unique index
+    on (claimant) WHERE status='OPEN' backs that up.
+    """
+    if IdentityReview.objects.filter(claimant=claimant, status="OPEN").exists():
+        return
+    IdentityReview.objects.create(
+        claimant=claimant, existing_identity=existing_identity, claimed_hmac=digest,
+        claimed_last4=last4, claimant_source=source, created_at=now,
+    )
+
+
+def supersede_active(user, now):
+    """Close the user's active row (renewal, or lapsed-but-unswept) so the one-active partial
+    unique index stays true and a new row can be inserted."""
+    CampusVerification.objects.filter(user=user, revoked_at__isnull=True).update(
+        revoked_at=now, revoke_reason=RevokeReason.SUPERSEDED
+    )
 
 
 def verify_campus_email(user, reg_no, now=None):
@@ -90,13 +108,10 @@ def verify_campus_email(user, reg_no, now=None):
     if not has_binding:
         hash_reg_no(reg_no or "")  # validate first; raises InvalidRegNo
 
-    # Close the previous active row (renewal, or lapsed-but-unswept) so the one-active partial
-    # unique index stays true and the new row can be inserted.
-    CampusVerification.objects.filter(user=user, revoked_at__isnull=True).update(
-        revoked_at=now, revoke_reason=RevokeReason.SUPERSEDED
-    )
+    supersede_active(user, now)
     if not has_binding:
-        _bind_identity(user, reg_no, now)
+        digest, last4 = hash_reg_no(reg_no)
+        bind_identity(user, digest, last4, IdentitySource.SELF_DECLARED, now)
     verification = CampusVerification.objects.create(
         user=user, method=VerificationMethod.CAMPUS_EMAIL, verified_at=now, verified_email=user.email
     )
