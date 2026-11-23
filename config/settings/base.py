@@ -47,6 +47,9 @@ REG_NO_PATTERN = env("REG_NO_PATTERN", default=r"^\d{8}$")
 ALLOWED_CAMPUS_DOMAINS = [
     d.strip().lower().lstrip("@") for d in env.list("ALLOWED_CAMPUS_DOMAINS", default=["lpu.co.in"]) if d.strip()
 ]
+# Exact email addresses (comma-separated) that are granted the staff role when they confirm their
+# address. Staff is never inferred from a domain: students hold @lpu.co.in addresses too.
+STAFF_EMAIL_ALLOWLIST = [e.strip().lower() for e in env.list("STAFF_EMAIL_ALLOWLIST", default=[]) if e.strip()]
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 

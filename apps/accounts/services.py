@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from apps.bounties.notifications import absolute_url
 
-from . import campus
+from . import campus, staff
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -129,10 +129,14 @@ def confirm_email(uid: int, token: str, password: str, reg_no: str = "") -> User
         if not user.check_password(password):
             raise InvalidToken
         campus.verify_campus_email(user, reg_no, now)  # may raise InvalidRegNo: nothing written yet
+        staff.grant_if_allowlisted(user, now)
         user.email_verified_at = now
         user.email_token_hash = None
         user.email_token_expires_at = None
-        user.save(update_fields=["email_verified_at", "email_token_hash", "email_token_expires_at"])
+        user.save(update_fields=[
+            "email_verified_at", "email_token_hash", "email_token_expires_at",
+            "staff_since", "staff_source",
+        ])
     return user
 
 
