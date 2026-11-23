@@ -27,3 +27,7 @@ class VerifierRateLimited(AccountsError):
 
 class SubjectNotFound(AccountsError):
     """No such user, or one that cannot be verified right now."""
+
+
+class InvalidState(AccountsError):
+    """The row is not in a state where this action applies (re-read under the lock)."""
