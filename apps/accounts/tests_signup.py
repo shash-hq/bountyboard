@@ -154,6 +154,23 @@ class EmailBudgetTests(SignupBase):
             codes.append(self.signup("owner@example.org", f"x{i}", PW2).status_code)
         self.assertEqual(codes, [302, 302, 429, 429])
 
+    @limits(verify_resend_per_email="2/h", signup_per_ip="1000/h")
+    def test_the_account_exists_mail_is_capped_per_address_across_ips_and_case(self):
+        """Keyed on the normalized target address, not the requester's IP: rotating IPs or
+        changing the case cannot mail one verified owner more than the budget."""
+        create_verified_user("owner", "owner@example.org", PW1)
+        mail.outbox.clear()
+        codes = []
+        for i, addr in enumerate(["owner@example.org", "OWNER@example.org", " Owner@Example.org ", "owner@example.org"]):
+            with self.captureOnCommitCallbacks(execute=True):
+                codes.append(self.client.post(reverse("accounts:signup"), {
+                    "username": f"x{i}", "email": addr, "password": PW2, "password_confirm": PW2,
+                }, REMOTE_ADDR=f"10.7.0.{i + 1}").status_code)
+        self.assertEqual(codes, [302, 302, 429, 429])
+        self.assertEqual(len(mail.outbox), 2)
+        with self.captureOnCommitCallbacks(execute=True):  # another address is unaffected
+            self.assertEqual(self.signup("fresh@example.org", "fresh", PW1).status_code, 302)
+
     @limits(verify_resend_per_email="2/h")
     def test_invalid_signups_do_not_burn_the_budget(self):
         for _ in range(4):

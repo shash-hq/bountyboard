@@ -206,6 +206,47 @@ class ConfirmPageTests(TestCase):
             self.client.post(reverse("accounts:login"), {"username_or_email": "attacker", "password": f"bad-{i}"})
         self.assertEqual(self.victim.post(self.url, {"password": "Attacker-pass-123"}).status_code, 429)
 
+    def _fail(self, how, i=0):
+        """One wrong-password attempt at the SAME account, named a different way each time."""
+        login = reverse("accounts:login")
+        if how == "login-username":
+            return self.client.post(login, {"username_or_email": "attacker", "password": f"bad-{i}"})
+        if how == "login-email":
+            return self.client.post(login, {"username_or_email": " Victim@Example.ORG ", "password": f"bad-{i}"})
+        return self.victim.post(self.url, {"password": f"bad-{i}"})
+
+    @limits(login_failures_per_account="3/h")
+    def test_failures_via_login_username_login_email_and_confirm_spend_one_budget(self):
+        codes = [self._fail(how, i).status_code
+                 for i, how in enumerate(["login-username", "login-email", "confirm", "login-email"])]
+        self.assertEqual(codes, [200] * 4)  # 3 allowed failures + the 4th still answered
+        for how in ("login-username", "login-email", "confirm"):
+            self.assertEqual(self._fail(how).status_code, 429, how)
+
+    @limits(login_failures_per_account="3/h")
+    def test_the_limit_is_reached_at_the_same_threshold_whichever_view_is_used(self):
+        orders = {
+            "login-username": ["login-username"] * 8,
+            "login-email": ["login-email"] * 8,
+            "confirm": ["confirm"] * 8,
+            "mixed": ["confirm", "login-email", "login-username", "confirm", "login-email"] * 2,
+        }
+        for name, hows in orders.items():
+            with self.subTest(name):
+                cache.clear()
+                codes = [self._fail(how, i).status_code for i, how in enumerate(hows)]
+                self.assertEqual(codes.index(429), 4)
+                self.assertEqual(set(codes[4:]), {429})
+
+    @limits(login_failures_per_account="3/h")
+    def test_unknown_identifiers_are_limited_at_the_same_threshold_as_real_accounts(self):
+        login = reverse("accounts:login")
+        names = ["nobody", "NOBODY", " nobody ", "nobody", "nobody", "nobody"]
+        codes = [self.client.post(login, {"username_or_email": n, "password": "x"}).status_code for n in names]
+        self.assertEqual(codes.index(429), 4)  # same as a real account: indistinguishable
+        other = self.client.post(login, {"username_or_email": "someone-else", "password": "x"})
+        self.assertEqual(other.status_code, 200)  # a different unknown name has its own bucket
+
     @limits(login_per_ip="2/h")
     def test_confirm_shares_the_per_ip_budget_with_login(self):
         for i in range(3):
