@@ -66,6 +66,11 @@ def set_layout(request):
 
 
 # Error handlers
+def ratelimited(request, exception=None):
+    """Rate limit hit: HTTP 429 (not 403, which means 'you may never do this')."""
+    return render(request, "errors/429.html", status=429)
+
+
 def handler400(request, exception=None):
     return render(request, "errors/400.html", status=400)
 

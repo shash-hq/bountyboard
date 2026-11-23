@@ -149,6 +149,23 @@ MESSAGE_TAGS = {
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="BountyBoard <notifications@bountyboard.campus>")
 
+# --- Rate limiting -------------------------------------------------------------------
+# Number of reverse proxies in front of the app that append to X-Forwarded-For (Render's
+# load balancer = at least 1). 0 means "trust only REMOTE_ADDR": the header is then ignored,
+# so a client cannot dodge limits by spoofing it. Measure on the real instance before raising it.
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
+RATELIMIT_IP_META_KEY = "config.http.client_ip"
+RATELIMIT_VIEW = "apps.pages.views.ratelimited"  # renders HTTP 429
+# Campus NAT means many students can share one public IP, so per-IP ceilings are generous
+# floods-only limits; the tight limits are per account / per email.
+RATE_LIMITS = {
+    "login_failures_per_account": "10/15m",
+    "login_per_ip": "1000/h",
+    "signup_per_ip": "200/h",
+    "password_reset_per_email": "3/h",
+    "password_reset_per_ip": "30/h",
+}
+
 # Cache backend (LocMem for dev & rate limiting)
 CACHES = {
     "default": {
