@@ -111,11 +111,13 @@ Configuration is managed via `django-environ`. Copy `.env.example` to `.env` to 
 
 | Variable | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `SECRET_KEY` | String | *Dev default* | Django cryptographic secret key (must be unique and secret in production). |
+| `SECRET_KEY` | String | *Dev only; **required in prod*** | Django secret key. Production refuses to boot without one (50+ chars, not a known/insecure value). |
 | `DEBUG` | Boolean | `True` in dev, `False` in prod | Enables Django debug mode and debug toolbar. |
 | `DATABASE_URL` | String | `sqlite:///db.sqlite3` | Database connection URL (e.g., `postgres://user:pass@host:5432/db`). |
-| `ALLOWED_HOSTS` | List | `localhost,127.0.0.1` | Comma-separated allowed HTTP host headers. |
-| `CSRF_TRUSTED_ORIGINS` | List | `https://*.railway.app,https://*.onrender.com` | Comma-separated trusted origins for CSRF validation. |
+| `ALLOWED_HOSTS` | List | `localhost,127.0.0.1` in dev; **required in prod** | Comma-separated allowed HTTP host headers. No `*` in production. |
+| `CSRF_TRUSTED_ORIGINS` | List | *None*; **required in prod** | Comma-separated explicit `https://` origins for CSRF validation (no wildcards). |
+| `TRUSTED_PROXY_COUNT` | Integer | `0` | Number of trusted reverse proxies that append to `X-Forwarded-For`. `0` ignores the header (rate limits then see the proxy's IP). Set it only after checking the real deployment. |
+| `SITE_URL` | String | `http://localhost:8000` in dev; **required in prod** | Public `https://` base URL of the site. |
 | `ALLOWED_EMAIL_DOMAIN` | String | *None (Any domain allowed)* | Optional domain filter for student registration (e.g. `campus.edu.in`). |
 | `EMAIL_URL` | String | `consolemail://` | Email backend URL (`smtp://user:pass@smtp.example.com:587` in production). |
 | `SECURE_SSL_REDIRECT` | Boolean | `True` in prod | Forces HTTPS redirects on all incoming connections. |
@@ -139,14 +141,24 @@ The project ships ready-to-deploy with Gunicorn and WhiteNoise static asset comp
    - `ALLOWED_HOSTS=${{RAILWAY_PUBLIC_DOMAIN}}`
    - `CSRF_TRUSTED_ORIGINS=https://${{RAILWAY_PUBLIC_DOMAIN}}`
 5. Railway uses the included [`Procfile`](Procfile) to start Gunicorn and automatically runs migrations and static collection on release.
-6. Seed initial demo data: In Railway's web terminal, run:
-   ```bash
-   python manage.py seed_demo
-   ```
+6. Do **not** run `seed_demo` on a deployment: it is for local development and refuses to run when `DEBUG` is off. A real campus database starts empty.
 
 ### Deploying to Render
-1. Click **New &rarr; Blueprint** and connect your repository (or use [`render.yaml`](render.yaml)).
-2. Render creates a free PostgreSQL instance and a Python web service using [`release.sh`](release.sh) and Gunicorn.
+Target: a free Render web service in Singapore with a free Supabase Postgres (also Singapore).
+1. In Supabase, create a project and copy the **Supavisor session-mode pooler** connection string
+   (port 5432). The direct connection is IPv6-only and will not work from Render.
+2. In Render, click **New &rarr; Blueprint** and select this repository. [`render.yaml`](render.yaml)
+   defines the service; Render asks once for the values marked `sync: false`:
+   `DATABASE_URL`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL`, `EMAIL_URL` and
+   `DEFAULT_FROM_EMAIL`. `SECRET_KEY` is generated. Production **refuses to boot** if a required
+   value is missing or unsafe (see the environment table above).
+3. Build runs `collectstatic` and `migrate`, so a failing migration fails the deploy and the
+   previous version keeps serving. Gunicorn runs with 1 worker and 4 threads.
+4. `TRUSTED_PROXY_COUNT` is left unset on purpose; check the real `X-Forwarded-For` chain on the
+   live instance before setting it (rate limits see the proxy address until then).
+
+This blueprint has **not** been deployed yet: it is validated against Render's published schema and
+checked against `prod.py` by tests, but the first real deploy has to be done and measured by hand.
 
 ---
 

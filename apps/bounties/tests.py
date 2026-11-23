@@ -5,7 +5,7 @@ from django.contrib.auth.models import Group, Permission
 from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
-from django.db import DatabaseError, OperationalError, connection, transaction
+from django.db import DatabaseError, OperationalError, connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -221,7 +221,7 @@ class BountyViewAndFilterTests(TestCase):
 
     def test_seed_demo_command(self):
         """Verify seed_demo runs cleanly without error."""
-        call_command("seed_demo")
+        call_command("seed_demo", allow_non_debug=True)  # the test runner forces DEBUG=False
         self.assertGreaterEqual(Bounty.objects.count(), 20)
         self.assertTrue(User.objects.filter(username="arjun_ece").exists())
 
@@ -446,12 +446,12 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         )
         self.assertNotContains(res_other, "+91 9999988888")
 
-        # Poster view: sees contact
+        # Poster view BEFORE accept: does NOT see the claimant's contact (decision 3)
         self.client.force_login(self.poster)
         res_poster = self.client.get(
             reverse("bounties:detail", kwargs={"pk": self.bounty.pk, "slug": self.bounty.slug})
         )
-        self.assertContains(res_poster, "+91 9999988888")
+        self.assertNotContains(res_poster, "+91 9999988888")
 
         # Before accept: claimant does NOT see poster's email in status block
         self.client.force_login(self.claimant1)
@@ -469,6 +469,13 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         )
         self.assertContains(res_claimant_after, "POSTER EMAIL:")
         self.assertContains(res_claimant_after, self.poster.email)
+
+        # After accept: the poster now sees the accepted claimant's contact
+        self.client.force_login(self.poster)
+        res_poster_after = self.client.get(
+            reverse("bounties:detail", kwargs={"pk": self.bounty.pk, "slug": self.bounty.slug})
+        )
+        self.assertContains(res_poster_after, "+91 9999988888")
 
 
 class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
@@ -516,22 +523,27 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
         errors = []
 
         def try_accept(claim_id):
-            connection.close()  # Ensure each thread has its own DB connection
             import time
-            for attempt in range(5):
-                try:
-                    c = accept_claim(claim_id, self.poster)
-                    results.append(c.id)
-                    return
-                except (OperationalError, DatabaseError) as e:
-                    if "locked" in str(e).lower() and attempt < 4:
-                        time.sleep(0.05)
-                        continue
-                    errors.append(e)
-                    return
-                except Exception as e:
-                    errors.append(e)
-                    return
+            try:
+                for attempt in range(5):
+                    try:
+                        c = accept_claim(claim_id, self.poster)
+                        results.append(c.id)
+                        return
+                    except (OperationalError, DatabaseError) as e:
+                        if "locked" in str(e).lower() and attempt < 4:
+                            time.sleep(0.05)
+                            continue
+                        errors.append(e)
+                        return
+                    except Exception as e:
+                        errors.append(e)
+                        return
+            finally:
+                # Each worker thread opens its own DB connection. Close it when the thread
+                # ends, otherwise it stays open and teardown cannot drop the test database
+                # ("database is being accessed by other users").
+                connections.close_all()
 
         t1 = threading.Thread(target=try_accept, args=(self.claim1.id,))
         t2 = threading.Thread(target=try_accept, args=(self.claim2.id,))

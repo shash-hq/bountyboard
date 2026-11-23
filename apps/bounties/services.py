@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
@@ -8,40 +9,130 @@ from .notifications import (
 )
 
 
+class InvalidTransition(ValidationError):
+    """The requested state change is not valid for the row's CURRENT state.
+
+    Raised after the row lock is taken and the status re-read, so it also covers
+    "someone else changed this a moment ago". Subclasses ValidationError so existing
+    callers/tests keep working; views read ``.messages`` so users never see ``['...']``.
+    """
+
+
+def _lock_bounty(bounty_id: int) -> Bounty:
+    """Lock the bounty row (FIRST in the fixed lock order: bounty -> claims -> user).
+
+    Every transition that touches a bounty or one of its claims takes this lock before
+    anything else and re-reads state afterwards, so concurrent transitions on the same
+    bounty are serialized and each one validates against the committed result of the last.
+    """
+    try:
+        return Bounty.objects.select_for_update().get(id=bounty_id)
+    except Bounty.DoesNotExist:
+        raise InvalidTransition("Bounty does not exist.")
+
+
+def _lock_claim(claim_id: int) -> Claim:
+    """Lock a claim row. Callers must already hold its bounty's lock."""
+    try:
+        return Claim.objects.select_for_update().get(id=claim_id)
+    except Claim.DoesNotExist:
+        raise InvalidTransition("Claim does not exist.")
+
+
+def _bounty_id_of_claim(claim_id: int) -> int:
+    """Unlocked read of claim.bounty_id. Safe because a claim never changes bounty;
+    it only tells us WHICH bounty to lock first (the claim is re-read under the lock)."""
+    bounty_id = Claim.objects.filter(id=claim_id).values_list("bounty_id", flat=True).first()
+    if bounty_id is None:
+        raise InvalidTransition("Claim does not exist.")
+    return bounty_id
+
+
+EDITABLE_FIELDS = ("title", "description", "category", "reward", "deadline")
+
+
+def create_bounty(poster, **fields) -> Bounty:
+    """Create a bounty, serializing the "max 5 OPEN per user" check.
+
+    Bounty.clean counts the poster's open bounties and then the row is inserted: two
+    concurrent creates can both count 4 and both insert (write skew -> 6 open). Locking the
+    poster's USER row first makes concurrent creates by the same poster take turns, so each
+    count sees the previous create's committed row. (No bounty exists yet, so there is no
+    bounty lock to take; the user lock is last in the bounty -> claims -> user order.)
+    """
+    User = get_user_model()
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=poster.pk)
+        bounty = Bounty(poster=poster, **fields)
+        bounty.save()  # full_clean() runs the cap check under the user lock
+    return bounty
+
+
+def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
+    """Poster edits an OPEN bounty's details.
+
+    Locks the bounty, re-checks that it is still OPEN and not expired AFTER the lock, and
+    writes ONLY the editable columns. The old view saved a full row from an unlocked read, so
+    a concurrent accept/cancel/hide was overwritten with stale status/accepted_claim/is_hidden.
+    """
+    unknown = set(fields) - set(EDITABLE_FIELDS)
+    if unknown:
+        raise TypeError(f"Not editable: {sorted(unknown)}")
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
+
+        if user != bounty.poster:
+            raise PermissionDenied("You do not have permission to edit this bounty.")
+        if bounty.status != BountyStatus.OPEN or bounty.is_expired:
+            raise InvalidTransition("Only active OPEN bounties can be edited.")
+
+        for name, value in fields.items():
+            setattr(bounty, name, value)
+        bounty.full_clean()
+        bounty.save(update_fields=[*fields, "updated_at"])
+    return bounty
+
+
+def create_claim(bounty_id: int, claimant, message: str, contact: str) -> Claim:
+    """Submit a claim. Locks the bounty so a claim cannot land on a bounty that was
+    accepted/cancelled concurrently, and so a double-submit is detected, not a 500."""
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
+
+        if bounty.poster_id == claimant.id:
+            raise InvalidTransition("You cannot claim your own bounty.")
+        if bounty.status != BountyStatus.OPEN or bounty.is_expired or bounty.is_hidden:
+            raise InvalidTransition("This bounty is no longer accepting claims.")
+        if Claim.objects.filter(bounty=bounty, claimant=claimant).exists():
+            raise InvalidTransition("You have already submitted a claim on this bounty.")
+
+        claim = Claim(bounty=bounty, claimant=claimant, message=message, contact=contact)
+        claim.save()
+    return claim
+
+
 def accept_claim(claim_id: int, user) -> Claim:
     """
     Atomically accepts one claim and rejects all other pending claims on the bounty.
-    Enforces concurrency lock via select_for_update to prevent double-accept races.
+    Lock order: bounty, then claims. State is re-validated after the locks are held.
     """
     with transaction.atomic():
-        try:
-            claim = (
-                Claim.objects.select_for_update()
-                .select_related("bounty")
-                .get(id=claim_id)
-            )
-        except Claim.DoesNotExist:
-            raise ValidationError("Claim does not exist.")
-
-        # Lock the bounty row as well
-        bounty = (
-            Bounty.objects.select_for_update()
-            .get(id=claim.bounty_id)
-        )
+        bounty = _lock_bounty(_bounty_id_of_claim(claim_id))
+        claim = _lock_claim(claim_id)
 
         # Permission check: Only the poster can accept claims
         if user != bounty.poster:
             raise PermissionDenied("Only the bounty poster can accept claims.")
 
-        # Status check
+        # Status checks, on the freshly locked rows
         if bounty.status != BountyStatus.OPEN:
-            raise ValidationError(f"Cannot accept claims on a bounty with status '{bounty.status}'.")
+            raise InvalidTransition(f"Cannot accept claims on a bounty with status '{bounty.status}'.")
 
         if bounty.is_expired:
-            raise ValidationError("Cannot accept claims on an expired bounty.")
+            raise InvalidTransition("Cannot accept claims on an expired bounty.")
 
         if claim.status != ClaimStatus.PENDING:
-            raise ValidationError(f"Cannot accept a claim with status '{claim.status}'.")
+            raise InvalidTransition(f"Cannot accept a claim with status '{claim.status}'.")
 
         # Update the accepted claim
         claim.status = ClaimStatus.ACCEPTED
@@ -52,14 +143,14 @@ def accept_claim(claim_id: int, user) -> Claim:
         bounty.accepted_claim = claim
         bounty.save(update_fields=["status", "accepted_claim", "updated_at"])
 
-        # Reject all other PENDING claims on this bounty
-        pending_claims = Claim.objects.filter(
+        # Reject all other PENDING claims on this bounty (locked, in id order)
+        pending_claims = Claim.objects.select_for_update().filter(
             bounty=bounty, status=ClaimStatus.PENDING
-        ).exclude(id=claim.id)
-        
+        ).exclude(id=claim.id).order_by("id")
+
         # Keep track of rejected claimants to send notification
         other_claims = list(pending_claims)
-        pending_claims.update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in other_claims]).update(status=ClaimStatus.REJECTED)
 
     # Dispatch notifications after transaction commits
     transaction.on_commit(lambda: send_claim_accepted_notification(claim))
@@ -71,16 +162,18 @@ def accept_claim(claim_id: int, user) -> Claim:
 
 def reject_claim(claim_id: int, user) -> Claim:
     """Poster explicitly rejects a pending claim."""
-    claim = Claim.objects.select_related("bounty").get(id=claim_id)
+    with transaction.atomic():
+        bounty = _lock_bounty(_bounty_id_of_claim(claim_id))
+        claim = _lock_claim(claim_id)
 
-    if user != claim.bounty.poster:
-        raise PermissionDenied("Only the bounty poster can reject claims.")
+        if user != bounty.poster:
+            raise PermissionDenied("Only the bounty poster can reject claims.")
 
-    if claim.status != ClaimStatus.PENDING:
-        raise ValidationError(f"Cannot reject a claim that is already '{claim.status}'.")
+        if claim.status != ClaimStatus.PENDING:
+            raise InvalidTransition(f"Cannot reject a claim that is already '{claim.status}'.")
 
-    claim.status = ClaimStatus.REJECTED
-    claim.save(update_fields=["status", "updated_at"])
+        claim.status = ClaimStatus.REJECTED
+        claim.save(update_fields=["status", "updated_at"])
 
     send_claim_rejected_notification(claim)
     return claim
@@ -88,48 +181,58 @@ def reject_claim(claim_id: int, user) -> Claim:
 
 def withdraw_claim(claim_id: int, user) -> Claim:
     """Claimant withdraws their own pending claim."""
-    claim = Claim.objects.select_related("bounty").get(id=claim_id)
+    with transaction.atomic():
+        _lock_bounty(_bounty_id_of_claim(claim_id))
+        claim = _lock_claim(claim_id)
 
-    if user != claim.claimant:
-        raise PermissionDenied("You can only withdraw your own claims.")
+        if user.id != claim.claimant_id:
+            raise PermissionDenied("You can only withdraw your own claims.")
 
-    if claim.status != ClaimStatus.PENDING:
-        raise ValidationError(f"Cannot withdraw a claim that is '{claim.status}'.")
+        if claim.status != ClaimStatus.PENDING:
+            raise InvalidTransition(f"Cannot withdraw a claim that is '{claim.status}'.")
 
-    claim.status = ClaimStatus.WITHDRAWN
-    claim.save(update_fields=["status", "updated_at"])
+        claim.status = ClaimStatus.WITHDRAWN
+        claim.save(update_fields=["status", "updated_at"])
     return claim
 
 
 def mark_bounty_done(bounty_id: int, user) -> Bounty:
     """Poster marks an in-progress claimed bounty as DONE."""
-    bounty = Bounty.objects.get(id=bounty_id)
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
 
-    if user != bounty.poster:
-        raise PermissionDenied("Only the bounty poster can mark a bounty as done.")
+        if user != bounty.poster:
+            raise PermissionDenied("Only the bounty poster can mark a bounty as done.")
 
-    if bounty.status != BountyStatus.CLAIMED:
-        raise ValidationError("Only claimed bounties can be marked done.")
+        if bounty.status != BountyStatus.CLAIMED:
+            raise InvalidTransition("Only claimed bounties can be marked done.")
 
-    bounty.status = BountyStatus.DONE
-    bounty.save(update_fields=["status", "updated_at"])
+        bounty.status = BountyStatus.DONE
+        bounty.save(update_fields=["status", "updated_at"])
     return bounty
 
 
 def cancel_bounty(bounty_id: int, user) -> Bounty:
     """Poster cancels an open bounty."""
-    bounty = Bounty.objects.get(id=bounty_id)
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
 
-    if user != bounty.poster:
-        raise PermissionDenied("Only the bounty poster can cancel a bounty.")
+        if user != bounty.poster:
+            raise PermissionDenied("Only the bounty poster can cancel a bounty.")
 
-    if bounty.status != BountyStatus.OPEN:
-        raise ValidationError("Only OPEN bounties can be cancelled.")
+        if bounty.status != BountyStatus.OPEN:
+            raise InvalidTransition("Only OPEN bounties can be cancelled.")
 
-    bounty.status = BountyStatus.CANCELLED
-    # Also reject any pending claims
-    bounty.claims.filter(status=ClaimStatus.PENDING).update(status=ClaimStatus.REJECTED)
-    bounty.save(update_fields=["status", "updated_at"])
+        bounty.status = BountyStatus.CANCELLED
+        bounty.save(update_fields=["status", "updated_at"])
+        # Also reject any pending claims, in the same transaction, under the bounty lock
+        pending_ids = list(
+            Claim.objects.select_for_update()
+            .filter(bounty=bounty, status=ClaimStatus.PENDING)
+            .order_by("id")
+            .values_list("id", flat=True)
+        )
+        Claim.objects.filter(id__in=pending_ids).update(status=ClaimStatus.REJECTED)
     return bounty
 
 

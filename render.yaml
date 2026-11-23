@@ -1,0 +1,42 @@
+# Render Blueprint for Bounty Board (free web service, Singapore).
+# The database is Supabase (Singapore, session-mode pooler), NOT a Render database, so no
+# `databases:` block here. Values marked `sync: false` are asked for once when the Blueprint is
+# created and are never stored in this file.
+services:
+  - type: web
+    name: bountyboard
+    runtime: python
+    plan: free
+    region: singapore
+    # Migrate at BUILD time: a failing migration fails the deploy and the old version keeps
+    # serving, and a cold start after idle spin-down stays fast (no migrate on boot).
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+    # 1 worker x 4 threads: the 0.1 CPU / 512 MB instance is small, and a single process keeps the
+    # in-process rate-limit counters correct (see settings.RATE_LIMITS).
+    startCommand: gunicorn config.wsgi:application --workers 1 --threads 4 --timeout 60 --access-logfile -
+    healthCheckPath: /healthz # never touches the database
+    autoDeployTrigger: commit
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      # Required by config/settings/prod.py: the app refuses to boot without these.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS # e.g. bountyboard.onrender.com (comma-separated, no *)
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS # e.g. https://bountyboard.onrender.com (explicit https origins)
+        sync: false
+      - key: SITE_URL # e.g. https://bountyboard.onrender.com
+        sync: false
+      # Supabase Supavisor SESSION-mode pooler (port 5432, IPv4); the direct host is IPv6-only.
+      - key: DATABASE_URL
+        sync: false
+      # Brevo SMTP, e.g. smtp+tls://user:pass@smtp-relay.brevo.com:587 . Without it, emails go nowhere.
+      - key: EMAIL_URL
+        sync: false
+      - key: DEFAULT_FROM_EMAIL # a domain with SPF/DKIM/DMARC
+        sync: false
+      # TRUSTED_PROXY_COUNT is intentionally NOT set (0): measure the real X-Forwarded-For chain on
+      # the live instance before trusting it. README explains.

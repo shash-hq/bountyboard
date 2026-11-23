@@ -3,7 +3,24 @@
    Handcrafted for Campus Bounty Board
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap');
+/* Self-hosted fonts (SIL Open Font License 1.1, see static/fonts/README.md): no third-party
+   request, so no visitor IP / referrer leaks to Google and no render block on a foreign host.
+   Latin subset only; both are variable fonts, so one file covers every weight in the range. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../fonts/archivo-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url('../fonts/bricolage-latin.woff2') format('woff2');
+}
 
 :root {
   /* Primitive Colors */

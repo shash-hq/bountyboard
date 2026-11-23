@@ -1,7 +1,10 @@
+import secrets
 from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from apps.bounties.models import Bounty, BountyStatus, Category, Claim, ClaimStatus
 from apps.bounties.services import accept_claim
@@ -9,42 +12,83 @@ from apps.bounties.services import accept_claim
 User = get_user_model()
 
 
+# The demo personas. A user is "seed-owned" only if BOTH username and email match one of these.
+SEED_USERS = [
+    ("arjun_ece", "arjun.ece@campus.edu.in", "Arjun Sharma", "ECE '26"),
+    ("priya_cs", "priya.cs@campus.edu.in", "Priya Nair", "CSE '25"),
+    ("rohan_mech", "rohan.mech@campus.edu.in", "Rohan Mehta", "Mech '26"),
+    ("ananya_design", "ananya.design@campus.edu.in", "Ananya Sen", "Des '25"),
+    ("kabir_ai", "kabir.ai@campus.edu.in", "Kabir Roy", "AI/DS '26"),
+    ("meera_biotech", "meera.biotech@campus.edu.in", "Meera Pillai", "Biotech '27"),
+    ("campus_mod", "mod@campus.edu.in", "Campus Moderator", "Staff"),
+]
+
+
 class Command(BaseCommand):
-    help = "Seeds realistic demo users, campus bounties, and claims for Bounty Board."
+    help = (
+        "Seeds demo users, campus bounties and claims. DEVELOPMENT ONLY: refuses to run unless "
+        "DEBUG is on (or --allow-non-debug is passed). Only touches rows owned by the seed users."
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--allow-non-debug",
+            action="store_true",
+            help="Run even though DEBUG is off. Never use this against a database with real users.",
+        )
+        parser.add_argument(
+            "--password",
+            default=None,
+            help="Password for newly created demo users (default: a random one, printed once).",
+        )
 
     def handle(self, *args, **options):
-        self.stdout.write(self.style.NOTICE("Clearing previous demo bounties and claims..."))
-        Bounty.objects.all().delete()
+        if not settings.DEBUG and not options["allow_non_debug"]:
+            raise CommandError(
+                "Refusing to seed: DEBUG is off, so this looks like a real deployment. "
+                "seed_demo is for local development. Pass --allow-non-debug only for a throwaway database."
+            )
 
-        # Ensure Moderator group exists
+        # Never adopt, modify or delete a real account that merely shares a seed username.
+        existing = {u.username: u for u in User.objects.filter(username__in=[u[0] for u in SEED_USERS])}
+        for username, email, _full_name, _role in SEED_USERS:
+            user = existing.get(username)
+            if user and (user.email.lower() != email or user.is_staff or user.is_superuser):
+                raise CommandError(
+                    f"User {username!r} already exists and is not a seed account "
+                    f"(different email, or staff/superuser). Refusing to touch it."
+                )
+
+        password = options["password"] or secrets.token_urlsafe(12)
+
+        # Ensure Moderator group exists (created with its permission by accounts migration 0001)
         mod_group, _ = Group.objects.get_or_create(name="Moderators")
 
         # Create 6 realistic student personas + 1 moderator
-        users_data = [
-            ("arjun_ece", "arjun.ece@campus.edu.in", "Arjun Sharma", "ECE '26"),
-            ("priya_cs", "priya.cs@campus.edu.in", "Priya Nair", "CSE '25"),
-            ("rohan_mech", "rohan.mech@campus.edu.in", "Rohan Mehta", "Mech '26"),
-            ("ananya_design", "ananya.design@campus.edu.in", "Ananya Sen", "Des '25"),
-            ("kabir_ai", "kabir.ai@campus.edu.in", "Kabir Roy", "AI/DS '26"),
-            ("meera_biotech", "meera.biotech@campus.edu.in", "Meera Pillai", "Biotech '27"),
-            ("campus_mod", "mod@campus.edu.in", "Campus Moderator", "Staff"),
-        ]
+        users_data = SEED_USERS
 
         users = {}
+        created_count = 0
         for username, email, full_name, role in users_data:
             user, created = User.objects.get_or_create(
                 username=username,
                 defaults={"email": email, "first_name": full_name.split()[0], "last_name": full_name.split()[1]},
             )
-            user.set_password("Student123!")
-            user.save()
-            if username == "campus_mod":
-                user.groups.add(mod_group)
-                user.is_staff = True
+            if created:  # an existing seed user keeps whatever password it has
+                user.set_password(password)
                 user.save()
+                created_count += 1
+            if username == "campus_mod":
+                user.groups.add(mod_group)  # moderator by group permission; never is_staff
             users[username] = user
 
+        # Replace only what this command created before: bounties posted by the seed users.
+        self.stdout.write(self.style.NOTICE("Clearing previous demo bounties (seed users' only)..."))
+        Bounty.objects.filter(poster__in=users.values()).delete()
+
         self.stdout.write(self.style.SUCCESS(f"Verified {len(users)} student users."))
+        if created_count:
+            self.stdout.write(f"Password for the {created_count} newly created demo users: {password}")
 
         now = timezone.now()
 

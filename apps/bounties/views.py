@@ -8,18 +8,31 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from config.http import safe_referer
+
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
 from .notifications import send_claim_received_notification
+from .policies import can_view_claim_contact, can_view_poster_contact
 from .services import (
     accept_claim,
     cancel_bounty,
+    create_bounty,
+    create_claim,
     hide_bounty,
     mark_bounty_done,
     reject_claim,
     resolve_report,
+    update_bounty_details,
     withdraw_claim,
 )
+
+
+def _error_text(e) -> str:
+    """Human-readable text for a service error. ``str(ValidationError)`` renders as
+    "['...']", so read ``.messages`` instead."""
+    messages_ = getattr(e, "messages", None)
+    return " ".join(messages_) if messages_ else str(e)
 
 
 def board_view(request):
@@ -120,7 +133,9 @@ def bounty_detail_view(request, pk, slug):
     # Claims list: poster sees all claims; other users do not see others' claims
     claims = []
     if request.user == bounty.poster or (request.user.is_authenticated and request.user.has_perm("bounties.moderate")):
-        claims = bounty.claims.select_related("claimant").order_by("-created_at")
+        claims = list(bounty.claims.select_related("claimant", "bounty").order_by("-created_at"))
+        for c in claims:
+            c.contact_visible = can_view_claim_contact(request.user, c)
 
     claim_form = ClaimForm() if bounty.can_claim(request.user) else None
     report_form = ReportForm() if request.user.is_authenticated and request.user != bounty.poster else None
@@ -133,6 +148,7 @@ def bounty_detail_view(request, pk, slug):
         "report_form": report_form,
         "can_edit": bounty.can_edit(request.user),
         "is_poster": request.user == bounty.poster,
+        "show_poster_contact": can_view_poster_contact(request.user, bounty),
     }
     return render(request, "bounties/detail.html", context)
 
@@ -156,10 +172,8 @@ def bounty_create_view(request):
     if request.method == "POST":
         form = BountyForm(request.POST)
         if form.is_valid():
-            bounty = form.save(commit=False)
-            bounty.poster = request.user
             try:
-                bounty.save()
+                bounty = create_bounty(request.user, **form.cleaned_data)
                 messages.success(request, f"Bounty '{bounty.title}' is now live on the board!")
                 return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
             except ValidationError as e:
@@ -188,7 +202,13 @@ def bounty_edit_view(request, pk):
     if request.method == "POST":
         form = BountyForm(request.POST, instance=bounty)
         if form.is_valid():
-            bounty = form.save()
+            # Do not form.save(): that writes the whole (possibly stale) row back.
+            # The service locks the bounty, re-checks it is still OPEN and writes only these fields.
+            try:
+                bounty = update_bounty_details(bounty.pk, request.user, **form.cleaned_data)
+            except ValidationError as e:
+                messages.error(request, _error_text(e))
+                return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
             messages.success(request, f"Bounty '{bounty.title}' updated successfully.")
             return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
     else:
@@ -209,7 +229,7 @@ def bounty_done_view(request, pk):
         bounty = mark_bounty_done(pk, request.user)
         messages.success(request, f"Bounty '{bounty.title}' marked as DONE! Offline settlement confirmed.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
     
     bounty = get_object_or_404(Bounty, pk=pk)
     return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
@@ -223,7 +243,7 @@ def bounty_cancel_view(request, pk):
         bounty = cancel_bounty(pk, request.user)
         messages.info(request, f"Bounty '{bounty.title}' has been cancelled.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     bounty = get_object_or_404(Bounty, pk=pk)
     return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
@@ -242,19 +262,20 @@ def bounty_claim_view(request, pk):
 
     form = ClaimForm(request.POST)
     if form.is_valid():
-        claim = form.save(commit=False)
-        claim.bounty = bounty
-        claim.claimant = request.user
-        claim.status = ClaimStatus.PENDING
         try:
-            claim.save()
+            claim = create_claim(
+                bounty.pk,
+                request.user,
+                message=form.cleaned_data["message"],
+                contact=form.cleaned_data["contact"],
+            )
             send_claim_received_notification(claim)
             messages.success(
                 request,
                 f"Your claim on '{bounty.title}' was submitted! The poster will review your contact handle.",
             )
         except ValidationError as e:
-            messages.error(request, str(e))
+            messages.error(request, _error_text(e))
     else:
         for errs in form.errors.values():
             for err in errs:
@@ -275,7 +296,7 @@ def claim_accept_view(request, pk):
             f"Accepted claim by {claim.claimant.username}! You can now coordinate via their contact handle: {claim.contact}",
         )
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     return redirect(f"/bounties/{claim.bounty.pk}/{claim.bounty.slug}/")
 
@@ -289,7 +310,7 @@ def claim_reject_view(request, pk):
         reject_claim(claim.pk, request.user)
         messages.info(request, f"Rejected claim by {claim.claimant.username}.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     return redirect(f"/bounties/{claim.bounty.pk}/{claim.bounty.slug}/")
 
@@ -303,7 +324,7 @@ def claim_withdraw_view(request, pk):
         withdraw_claim(claim.pk, request.user)
         messages.info(request, "Your claim was withdrawn.")
     except (PermissionDenied, ValidationError) as e:
-        messages.error(request, str(e))
+        messages.error(request, _error_text(e))
 
     return redirect("/me/")
 
@@ -368,10 +389,8 @@ def bounty_toggle_hide_view(request, pk):
     else:
         messages.success(request, f"Bounty '{bounty.title}' is now visible on public board.")
 
-    referer = request.META.get("HTTP_REFERER")
-    if referer and ("mod" in referer or "bounties" in referer):
-        return redirect(referer)
-    return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+    # Back to the page the moderator came from (mod queue or a bounty page), never off-site.
+    return redirect(safe_referer(request, fallback=bounty.get_absolute_url(), path_prefix="/bounties/"))
 
 
 @require_POST

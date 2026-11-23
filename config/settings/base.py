@@ -8,7 +8,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    SECRET_KEY=(str, "insecure-default-django-key-for-dev-builds-only-1234567890"),
     ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost"]),
     ALLOWED_EMAIL_DOMAIN=(str, ""),
     DATABASE_URL=(str, f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
@@ -23,7 +22,10 @@ env_file = BASE_DIR / ".env"
 if env_file.exists():
     environ.Env.read_env(str(env_file))
 
-SECRET_KEY = env("SECRET_KEY")
+# No committed default: dev.py supplies a throwaway key, prod.py refuses to boot without a real one.
+SECRET_KEY = env("SECRET_KEY", default="")
+# Public base URL, used for absolute links (emails). dev.py defaults it, prod.py requires it.
+SITE_URL = env("SITE_URL", default="")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 if "testserver" not in ALLOWED_HOSTS:
@@ -53,6 +55,8 @@ LOCAL_APPS = [
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -130,8 +134,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Auth Redirects
 LOGIN_URL = "accounts:login"
-LOGIN_REDIRECT_URL = "pages:board"
-LOGOUT_REDIRECT_URL = "pages:board"
+LOGIN_REDIRECT_URL = "board"  # root URLconf name for "/"; "pages:board" does not exist
+LOGOUT_REDIRECT_URL = "board"
 
 # Messages framework - map to neo-brutalist alert styles
 from django.contrib.messages import constants as messages
@@ -146,6 +150,23 @@ MESSAGE_TAGS = {
 # Email backend default
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="BountyBoard <notifications@bountyboard.campus>")
+
+# --- Rate limiting -------------------------------------------------------------------
+# Number of reverse proxies in front of the app that append to X-Forwarded-For (Render's
+# load balancer = at least 1). 0 means "trust only REMOTE_ADDR": the header is then ignored,
+# so a client cannot dodge limits by spoofing it. Measure on the real instance before raising it.
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
+RATELIMIT_IP_META_KEY = "config.http.client_ip"
+RATELIMIT_VIEW = "apps.pages.views.ratelimited"  # renders HTTP 429
+# Campus NAT means many students can share one public IP, so per-IP ceilings are generous
+# floods-only limits; the tight limits are per account / per email.
+RATE_LIMITS = {
+    "login_failures_per_account": "10/15m",
+    "login_per_ip": "1000/h",
+    "signup_per_ip": "200/h",
+    "password_reset_per_email": "3/h",
+    "password_reset_per_ip": "30/h",
+}
 
 # Cache backend (LocMem for dev & rate limiting)
 CACHES = {
