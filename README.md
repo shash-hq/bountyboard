@@ -116,6 +116,7 @@ Configuration is managed via `django-environ`. Copy `.env.example` to `.env` to 
 | `DATABASE_URL` | String | `sqlite:///db.sqlite3` | Database connection URL (e.g., `postgres://user:pass@host:5432/db`). |
 | `ALLOWED_HOSTS` | List | `localhost,127.0.0.1` in dev; **required in prod** | Comma-separated allowed HTTP host headers. No `*` in production. |
 | `CSRF_TRUSTED_ORIGINS` | List | *None*; **required in prod** | Comma-separated explicit `https://` origins for CSRF validation (no wildcards). |
+| `TRUSTED_PROXY_COUNT` | Integer | `0` | Number of trusted reverse proxies that append to `X-Forwarded-For`. `0` ignores the header (rate limits then see the proxy's IP). Set it only after checking the real deployment. |
 | `SITE_URL` | String | `http://localhost:8000` in dev; **required in prod** | Public `https://` base URL of the site. |
 | `ALLOWED_EMAIL_DOMAIN` | String | *None (Any domain allowed)* | Optional domain filter for student registration (e.g. `campus.edu.in`). |
 | `EMAIL_URL` | String | `consolemail://` | Email backend URL (`smtp://user:pass@smtp.example.com:587` in production). |
