@@ -144,8 +144,21 @@ The project ships ready-to-deploy with Gunicorn and WhiteNoise static asset comp
 6. Do **not** run `seed_demo` on a deployment: it is for local development and refuses to run when `DEBUG` is off. A real campus database starts empty.
 
 ### Deploying to Render
-1. Click **New &rarr; Blueprint** and connect your repository (or use [`render.yaml`](render.yaml)).
-2. Render creates a free PostgreSQL instance and a Python web service using [`release.sh`](release.sh) and Gunicorn.
+Target: a free Render web service in Singapore with a free Supabase Postgres (also Singapore).
+1. In Supabase, create a project and copy the **Supavisor session-mode pooler** connection string
+   (port 5432). The direct connection is IPv6-only and will not work from Render.
+2. In Render, click **New &rarr; Blueprint** and select this repository. [`render.yaml`](render.yaml)
+   defines the service; Render asks once for the values marked `sync: false`:
+   `DATABASE_URL`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL`, `EMAIL_URL` and
+   `DEFAULT_FROM_EMAIL`. `SECRET_KEY` is generated. Production **refuses to boot** if a required
+   value is missing or unsafe (see the environment table above).
+3. Build runs `collectstatic` and `migrate`, so a failing migration fails the deploy and the
+   previous version keeps serving. Gunicorn runs with 1 worker and 4 threads.
+4. `TRUSTED_PROXY_COUNT` is left unset on purpose; check the real `X-Forwarded-For` chain on the
+   live instance before setting it (rate limits see the proxy address until then).
+
+This blueprint has **not** been deployed yet: it is validated against Render's published schema and
+checked against `prod.py` by tests, but the first real deploy has to be done and measured by hand.
 
 ---
 
