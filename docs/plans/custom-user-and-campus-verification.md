@@ -68,8 +68,8 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
 - Constraints:
   - Partial unique `(user) WHERE revoked_at IS NULL`: at most one active verification per user.
   - CheckConstraints, per method:
-    - `IN_PERSON` ⇒ `identity`, `verified_by` and `card_name_enc` are all NOT NULL.
-    - `CAMPUS_EMAIL` ⇒ `verified_email` NOT NULL and `identity` NULL.
+    - `IN_PERSON` ⇒ `verified_by` and `card_name_enc` are NOT NULL. (`identity` may be NULL: a reg-no collision verifies the user unbound, see "Deviations from this plan".)
+    - `CAMPUS_EMAIL` ⇒ `verified_email` NOT NULL, and `verified_by` and `identity` NULL.
   - CheckConstraint: `revoked_at IS NULL ⇔ revoke_reason IS NULL`.
 - Permission: none on this model. `accounts.verify_student` lives permanently on `User.Meta.permissions` (added in PR 1) and is not moved here.
 - **Card name:**
@@ -206,7 +206,7 @@ python manage.py makemigrations --check --dry-run --settings=config.settings.dev
 coverage run --branch manage.py test --settings=config.settings.dev && coverage report --omit=...
 ```
 
-Manual run-through via `runserver` and the console email backend. Until PR 4 removes the signup gate, only `lpu.co.in` addresses can sign up (`ALLOWED_EMAIL_DOMAIN=lpu.co.in`), so the steps use those:
+Manual run-through via `runserver` and the console email backend (signup is open to any domain from PR 4; `lpu.co.in` is just the default `ALLOWED_CAMPUS_DOMAINS`):
 1. Sign up with an `@lpu.co.in` address, then confirm the email.
 2. Post a bounty; a second post is refused (cap 1).
 3. Sign up a second user with `@lpu.co.in`; they become LPU-verified on confirm (PR 4 on).
@@ -215,7 +215,17 @@ Manual run-through via `runserver` and the console email backend. Until PR 4 rem
 6. The poster accepts; both parties see each other's contact.
 7. A moderator revokes with `POLICY_VIOLATION`; the counterparty sees the notification and cancels.
 
-**PR 4 run-through addition** (the gate is gone): sign up with a gmail address and confirm the email. They become `EMAIL_VERIFIED` only: they can post (cap 1) and pitch, but cannot accept or be accepted.
+**PR 4 run-through addition:** sign up with a gmail address and confirm the email. They become `EMAIL_VERIFIED` only: they can post (cap 1) and pitch, but cannot accept or be accepted.
+
+## Deviations from this plan (found while building PR 4)
+
+1. **`IN_PERSON` does not require `identity`.** The original check contradicted "a collision never blocks": the colliding user is verified with `identity=NULL`, so the constraint would have rejected the insert and lost the verification. `CAMPUS_EMAIL` rows also forbid `verified_by`.
+2. **`verified_by` is `PROTECT`**, not `SET_NULL` (which would violate the `IN_PERSON` check): a verifier with history cannot be deleted.
+3. **A card that disagrees with an already-bound number** (a different `reg_no_hmac` for the same user) was unspecified. The binding is left untouched, the verification still goes through, and an `IdentityReview` is opened for a moderator.
+4. **`ALLOWED_CAMPUS_DOMAINS` landed one commit before the gate removal**, because the confirm path needs it. Open signup never existed without the campus check.
+5. **Accounts errors** live in `apps/accounts/errors.py` (shaped like PR 2's `DomainError`) until PR 2 merges; then re-parent them. The moderator check is a local helper with `can_moderate`'s rule, to be swapped likewise.
+6. **Open question 3 is not implemented yet.** `StudentIdentity.user` is a non-null `OneToOne(CASCADE)`, so deleting an account always deletes its binding, including after a `POLICY_VIOLATION`. Keeping a banned student's binding needs `user` nullable plus a deletion service; that is separate work.
+7. **No admin actions yet.** The campus models are view-only in the admin; moderator actions arrive as views in PR 7.
 
 ## Open questions (my default, if you don't say otherwise)
 
