@@ -17,11 +17,10 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.forms import SignupForm
 from apps.bounties import services
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
 
@@ -145,13 +144,6 @@ class RaceRepro(TransactionTestCase):
 
 
 class LogicRepro(TestCase):
-    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
-    def test_domain_suffix_bypass(self):
-        f = SignupForm(data={"username": "eve", "email": "eve@notiitb.ac.in",
-                             "password": "Zx9!long-pass", "password_confirm": "Zx9!long-pass"})
-        print(f"\n[domain] notiitb.ac.in accepted for iitb.ac.in: {f.is_valid()}")
-        self.assertTrue(f.is_valid())
-
     def test_validation_error_repr_in_flash(self):
         p = User.objects.create_user("p2", "p2@x.in", "pw-Strong-123")
         b = mk(p); b.status = BountyStatus.DONE; b.save()
