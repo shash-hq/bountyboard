@@ -112,10 +112,14 @@
                 {{ c.message }}
               </p>
 
-              <!-- Contact handle: visible only to poster / moderator -->
-              <div style="font-size: var(--text-xs); font-weight: 700; color: var(--ink); margin-bottom: var(--spacing-3);">
-                📞 Contact Handle: <u>{{ c.contact }}</u> &bull; Email: <u>{{ c.claimant.email }}</u>
-              </div>
+              <!-- Contact: revealed by policies.can_view_claim_contact (accepted claim, poster/claimant only) -->
+              {% if c.contact_visible %}
+                <div style="font-size: var(--text-xs); font-weight: 700; color: var(--ink); margin-bottom: var(--spacing-3);">
+                  📞 Contact Handle: <u>{{ c.contact }}</u> &bull; Email: <u>{{ c.claimant.email }}</u>
+                </div>
+              {% elif c.status == 'PENDING' %}
+                <div class="field-help">Contact details are shared only after you accept a claim.</div>
+              {% endif %}
 
               <!-- Accept / Reject Actions for poster -->
               {% if is_poster and bounty.status == 'OPEN' and not bounty.is_expired and c.status == 'PENDING' %}
@@ -159,6 +163,7 @@
         <div style="margin-bottom: var(--spacing-3);">
           {% if user_claim.status == 'ACCEPTED' %}
             <span class="stamp-badge stamp-open" style="font-size: var(--text-sm);">ACCEPTED SOLVER 🎉</span>
+            {% if show_poster_contact %}
             <div style="margin-top: var(--spacing-4); background-color: var(--white); border: 2px solid var(--ink); padding: var(--spacing-3); font-size: var(--text-sm);">
               <strong>POSTER EMAIL:</strong><br>
               <a href="mailto:{{ bounty.poster.email }}" style="color: var(--ink); font-weight: 800;">{{ bounty.poster.email }}</a>
@@ -166,6 +171,7 @@
                 Reach out immediately and agree on deliverable handoff before the deadline!
               </div>
             </div>
+            {% endif %}
           {% elif user_claim.status == 'PENDING' %}
             <span class="stamp-badge stamp-claimed">PENDING POSTER REVIEW</span>
             <p style="font-size: var(--text-sm); margin: var(--spacing-3) 0;">

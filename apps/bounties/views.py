@@ -11,6 +11,7 @@ from django_ratelimit.decorators import ratelimit
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
 from .notifications import send_claim_received_notification
+from .policies import can_view_claim_contact, can_view_poster_contact
 from .services import (
     accept_claim,
     cancel_bounty,
@@ -130,7 +131,9 @@ def bounty_detail_view(request, pk, slug):
     # Claims list: poster sees all claims; other users do not see others' claims
     claims = []
     if request.user == bounty.poster or (request.user.is_authenticated and request.user.has_perm("bounties.moderate")):
-        claims = bounty.claims.select_related("claimant").order_by("-created_at")
+        claims = list(bounty.claims.select_related("claimant", "bounty").order_by("-created_at"))
+        for c in claims:
+            c.contact_visible = can_view_claim_contact(request.user, c)
 
     claim_form = ClaimForm() if bounty.can_claim(request.user) else None
     report_form = ReportForm() if request.user.is_authenticated and request.user != bounty.poster else None
@@ -143,6 +146,7 @@ def bounty_detail_view(request, pk, slug):
         "report_form": report_form,
         "can_edit": bounty.can_edit(request.user),
         "is_poster": request.user == bounty.poster,
+        "show_poster_contact": can_view_poster_contact(request.user, bounty),
     }
     return render(request, "bounties/detail.html", context)
 

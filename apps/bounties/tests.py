@@ -446,12 +446,12 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         )
         self.assertNotContains(res_other, "+91 9999988888")
 
-        # Poster view: sees contact
+        # Poster view BEFORE accept: does NOT see the claimant's contact (decision 3)
         self.client.force_login(self.poster)
         res_poster = self.client.get(
             reverse("bounties:detail", kwargs={"pk": self.bounty.pk, "slug": self.bounty.slug})
         )
-        self.assertContains(res_poster, "+91 9999988888")
+        self.assertNotContains(res_poster, "+91 9999988888")
 
         # Before accept: claimant does NOT see poster's email in status block
         self.client.force_login(self.claimant1)
@@ -469,6 +469,13 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         )
         self.assertContains(res_claimant_after, "POSTER EMAIL:")
         self.assertContains(res_claimant_after, self.poster.email)
+
+        # After accept: the poster now sees the accepted claimant's contact
+        self.client.force_login(self.poster)
+        res_poster_after = self.client.get(
+            reverse("bounties:detail", kwargs={"pk": self.bounty.pk, "slug": self.bounty.slug})
+        )
+        self.assertContains(res_poster_after, "+91 9999988888")
 
 
 class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
