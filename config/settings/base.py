@@ -50,6 +50,10 @@ ALLOWED_CAMPUS_DOMAINS = [
 # Exact email addresses (comma-separated) that are granted the staff role when they confirm their
 # address. Staff is never inferred from a domain: students hold @lpu.co.in addresses too.
 STAFF_EMAIL_ALLOWLIST = [e.strip().lower() for e in env.list("STAFF_EMAIL_ALLOWLIST", default=[]) if e.strip()]
+# Per-verifier caps on in-person verifications, so a compromised verifier account can't mass-verify.
+# Counted from the AuditEvent table (survives restarts, unlike a LocMem counter).
+VERIFIER_LIMIT_HOURLY = env.int("VERIFIER_LIMIT_HOURLY", default=30)
+VERIFIER_LIMIT_DAILY = env.int("VERIFIER_LIMIT_DAILY", default=150)
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 
