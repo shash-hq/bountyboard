@@ -3,6 +3,8 @@ from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
+from config.http import safe_referer
+
 
 @require_GET
 def healthz(request):
@@ -57,8 +59,7 @@ def set_layout(request):
     layout = request.POST.get("layout", "grid")
     if layout not in ("grid", "list"):
         layout = "grid"
-    referer = request.META.get("HTTP_REFERER", "/")
-    response = HttpResponseRedirect(referer)
+    response = HttpResponseRedirect(safe_referer(request, fallback="/"))
     # 30 day max_age
     response.set_cookie("bb_layout", layout, max_age=60 * 60 * 24 * 30, samesite="Lax")
     return response
