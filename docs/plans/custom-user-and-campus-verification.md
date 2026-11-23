@@ -27,12 +27,12 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
 **`User(AbstractUser)`**
 - `email`: required.
 - `email_verified_at`: nullable.
-- `contact_handle`: optional WhatsApp/phone shown after acceptance; email is always shown.
-- `email_token_hash` and `email_token_expires_at` back a stateful token. It is `secrets.token_urlsafe(32)`, only its sha256 is stored, it lasts 24 h, a resend overwrites it (so the previous token dies), and it is nulled on use (single-use).
-- `staff_since`, `staff_source` (`MODERATOR`/`ALLOWLIST`) and `staff_granted_by`.
-- Constraints:
+- `contact_handle`: optional WhatsApp/phone shown after acceptance; email is always shown. *(Added in PR 6.)*
+- `email_token_hash` and `email_token_expires_at` *(added in PR 3)* back a stateful token. It is `secrets.token_urlsafe(32)`, only its sha256 is stored, it lasts 24 h, a resend overwrites it (so the previous token dies), and it is nulled on use (single-use).
+- `staff_since`, `staff_source` (`MODERATOR`/`ALLOWLIST`) and `staff_granted_by`. *(Added in PR 4, with the staff check constraint below and the allowlisted staff grant.)*
+- Constraints (PR 1 adds the two unique constraints; the staff check is PR 4):
   - `UniqueConstraint(Lower("email"))` and `UniqueConstraint(Lower("username"))`.
-  - CheckConstraint: `staff_source IS NULL ⇔ staff_since IS NULL`.
+  - CheckConstraint: `staff_source IS NULL ⇔ staff_since IS NULL`. *(Added in PR 4.)*
 - Manager: normalizes email (trim + lower). `create_superuser` sets `email_verified_at=now()` so admins can log in.
 
 **`StudentIdentity`**: the permanent reg-no binding, for Sybil resistance.
@@ -71,7 +71,7 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
     - `IN_PERSON` ⇒ `identity`, `verified_by` and `card_name_enc` are all NOT NULL.
     - `CAMPUS_EMAIL` ⇒ `verified_email` NOT NULL and `identity` NULL.
   - CheckConstraint: `revoked_at IS NULL ⇔ revoke_reason IS NULL`.
-- Permission: `Meta.permissions = [("verify_student", …)]`.
+- Permission: none on this model. `accounts.verify_student` lives permanently on `User.Meta.permissions` (added in PR 1) and is not moved here.
 - **Card name:**
   - The column is `defer()`-ed in the default manager and never appears in a form, template context or `__str__`.
   - It is decrypted only by `services.reveal_card_name()`: a moderator does it with a reason, which writes an audit row; the owning user can see their own on `/me`.
@@ -157,16 +157,16 @@ Bounty service changes (`apps/bounties/services.py`):
 4. Recreate the local DB: `dropdb bountyboard && createdb bountyboard`. The test DB rebuilds itself.
 5. Before the first deploy, check whether Supabase already has `django_migrations` rows. If so, it needs `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`. That is destructive, so I'll **ask before running it**.
 6. Add a test that runs `makemigrations --check --dry-run` so model/migration drift fails CI.
-7. Update `seed_demo`, `docs/audit/test_audit_repro.py` (it uses `ALLOWED_EMAIL_DOMAIN`), and the tests that use `ALLOWED_EMAIL_DOMAIN`/`email_domain_allowed` (`apps/accounts/tests.py:69-218`). The suffix-match function is removed.
+7. Update `seed_demo` if the user swap requires it. **The signup domain gate stays in PR 1** (decided 23 Nov): `email_domain_allowed`, `ALLOWED_EMAIL_DOMAIN`, `docs/audit/test_audit_repro.py` and the tests at `apps/accounts/tests.py:69-218` are untouched. **PR 3 adds email verification on top of the existing gate.** **PR 4 removes the gate** (the suffix-match function and `ALLOWED_EMAIL_DOMAIN`) and introduces `ALLOWED_CAMPUS_DOMAINS` together with the campus check, so open signup never exists without that check.
 
-New prod-required settings (fail closed in `config/settings/prod.py`): `REG_NO_HMAC_KEY` and `CARD_NAME_KEYS`. `ALLOWED_CAMPUS_DOMAINS` replaces `ALLOWED_EMAIL_DOMAIN`, including in `apps/pages/context_processors.py` and `.env.example`. These are separate from `SECRET_KEY`, so rotating it doesn't break reg-no uniqueness. Key handling goes in the commit body: if the HMAC key leaks along with the DB, an 8-digit space is brute-forced in seconds, so the key lives only in Render env, never in backups.
+New prod-required settings (fail closed in `config/settings/prod.py`): `REG_NO_HMAC_KEY` and `CARD_NAME_KEYS`. `ALLOWED_CAMPUS_DOMAINS` replaces `ALLOWED_EMAIL_DOMAIN` (both in PR 4), including in `apps/pages/context_processors.py` and `.env.example`. These are separate from `SECRET_KEY`, so rotating it doesn't break reg-no uniqueness. Key handling goes in the commit body: if the HMAC key leaks along with the DB, an 8-digit space is brute-forced in seconds, so the key lives only in Render env, never in backups.
 
 ## PR breakdown (each: small commits, tests in the same commit, full Postgres suite green, "not covered" list)
 
 1. **Custom user + migration reset.** Adds User, the case-insensitive unique constraints, `email_verified_at` (existing behaviour otherwise unchanged; signup still logs in), the groups migration, the drift test, admin and seed. Tests: an `IntegrityError` on `A@x.com` vs `a@x.com` and on usernames, at the ORM `bulk_create` level so form checks are bypassed. Also updates CLAUDE.local.md decision 2 / I9.
 2. **Policies + domain exceptions.** A pure refactor: `can_moderate`, `NotPermitted`, and replacing the scattered checks. No behaviour change except dropping `is_staff`-as-moderator, which gets a test.
-3. **Email verification + any-domain signup** (closes Phase 0). Covers the token flow, POST-confirm, resend rate-limited per address and IP, login refused for unverified accounts, the logout middleware, `LoginRequiredMiddleware`, the landing page and `/board/`, and the robots/sitemap scope. `CAMPUS_EMAIL` auto-verification is **not** in this PR (no model yet).
-4. **Campus verification model + services.** Adds `StudentIdentity`, `CampusVerification`, `IdentityReview`, `AuditEvent`, and `CAMPUS_EMAIL` on confirm (the reg-no field, plus a review on collision). TTL is enforced in the policy from day one. Also adds the allowlisted staff grant, `verify_in_person` with the rate limit, `revoke_verification`, `release_identity`, card-name encryption and the prod settings. Admin is read-only; its actions call services.
+3. **Email verification** on top of the existing signup domain gate (the gate is **not** removed here). Covers the token flow, POST-confirm, resend rate-limited per address and IP, login refused for unverified accounts, the logout middleware, `LoginRequiredMiddleware`, the landing page and `/board/`, and the robots/sitemap scope. `CAMPUS_EMAIL` auto-verification is **not** in this PR (no model yet).
+4. **Campus verification model + services.** Adds `StudentIdentity`, `CampusVerification`, `IdentityReview`, `AuditEvent`, and `CAMPUS_EMAIL` on confirm (the reg-no field, plus a review on collision). TTL is enforced in the policy from day one. Also **removes the signup domain gate and introduces `ALLOWED_CAMPUS_DOMAINS`** together with the campus check (closes Phase 0), and adds the `User` staff fields (`staff_since`, `staff_source`, `staff_granted_by`) with their check constraint, the allowlisted staff grant, `verify_in_person` with the rate limit, `revoke_verification`, `release_identity`, card-name encryption and the prod settings. `accounts.verify_student` is already on `User` (PR 1); no move. Admin is read-only; its actions call services.
 5. **Verifier desk UI + presence code.** Adds the Verifiers-only view (username + code + reg no + card name), the code on `/me`, and the own-record view on `/me`. Tests show that a verifier can't reach moderation or contact pages.
 6. **Gating at the moment of value.**
    - `accept_claim` requires both parties verified, under lock.
@@ -204,14 +204,16 @@ python manage.py makemigrations --check --dry-run --settings=config.settings.dev
 coverage run --branch manage.py test --settings=config.settings.dev && coverage report --omit=...
 ```
 
-Manual run-through via `runserver` and the console email backend:
-1. Sign up with a gmail address, then confirm the email.
+Manual run-through via `runserver` and the console email backend. Until PR 4 removes the signup gate, only `lpu.co.in` addresses can sign up (`ALLOWED_EMAIL_DOMAIN=lpu.co.in`), so the steps use those:
+1. Sign up with an `@lpu.co.in` address, then confirm the email.
 2. Post a bounty; a second post is refused (cap 1).
-3. Sign up a second user with `@lpu.co.in`; they become LPU-verified on confirm.
+3. Sign up a second user with `@lpu.co.in`; they become LPU-verified on confirm (PR 4 on).
 4. That user pitches; the poster can't accept because the poster isn't LPU-verified.
 5. A verifier verifies the poster in person with the presence code.
 6. The poster accepts; both parties see each other's contact.
 7. A moderator revokes with `POLICY_VIOLATION`; the counterparty sees the notification and cancels.
+
+**PR 4 run-through addition** (the gate is gone): sign up with a gmail address and confirm the email. They become `EMAIL_VERIFIED` only: they can post (cap 1) and pitch, but cannot accept or be accepted.
 
 ## Open questions (my default, if you don't say otherwise)
 
