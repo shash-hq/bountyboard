@@ -13,6 +13,7 @@ from config.http import safe_referer
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
 from .notifications import send_claim_received_notification
+from .exceptions import DomainError
 from .policies import (
     can_moderate,
     can_view_claim_contact,
@@ -208,7 +209,7 @@ def bounty_edit_view(request, pk):
             # The service locks the bounty, re-checks it is still OPEN and writes only these fields.
             try:
                 bounty = update_bounty_details(bounty.pk, request.user, **form.cleaned_data)
-            except ValidationError as e:
+            except (DomainError, ValidationError) as e:
                 messages.error(request, _error_text(e))
                 return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
             messages.success(request, f"Bounty '{bounty.title}' updated successfully.")
@@ -230,7 +231,7 @@ def bounty_done_view(request, pk):
     try:
         bounty = mark_bounty_done(pk, request.user)
         messages.success(request, f"Bounty '{bounty.title}' marked as DONE! Offline settlement confirmed.")
-    except (PermissionDenied, ValidationError) as e:
+    except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))
     
     bounty = get_object_or_404(Bounty, pk=pk)
@@ -244,7 +245,7 @@ def bounty_cancel_view(request, pk):
     try:
         bounty = cancel_bounty(pk, request.user)
         messages.info(request, f"Bounty '{bounty.title}' has been cancelled.")
-    except (PermissionDenied, ValidationError) as e:
+    except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))
 
     bounty = get_object_or_404(Bounty, pk=pk)
@@ -276,7 +277,7 @@ def bounty_claim_view(request, pk):
                 request,
                 f"Your claim on '{bounty.title}' was submitted! The poster will review your contact handle.",
             )
-        except ValidationError as e:
+        except (DomainError, ValidationError) as e:
             messages.error(request, _error_text(e))
     else:
         for errs in form.errors.values():
@@ -297,7 +298,7 @@ def claim_accept_view(request, pk):
             request,
             f"Accepted claim by {claim.claimant.username}! You can now coordinate via their contact handle: {claim.contact}",
         )
-    except (PermissionDenied, ValidationError) as e:
+    except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))
 
     return redirect(f"/bounties/{claim.bounty.pk}/{claim.bounty.slug}/")
@@ -311,7 +312,7 @@ def claim_reject_view(request, pk):
     try:
         reject_claim(claim.pk, request.user)
         messages.info(request, f"Rejected claim by {claim.claimant.username}.")
-    except (PermissionDenied, ValidationError) as e:
+    except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))
 
     return redirect(f"/bounties/{claim.bounty.pk}/{claim.bounty.slug}/")
@@ -325,7 +326,7 @@ def claim_withdraw_view(request, pk):
     try:
         withdraw_claim(claim.pk, request.user)
         messages.info(request, "Your claim was withdrawn.")
-    except (PermissionDenied, ValidationError) as e:
+    except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))
 
     return redirect("/me/")
