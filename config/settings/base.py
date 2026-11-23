@@ -67,6 +67,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "apps.accounts.middleware.VerifiedEmailMiddleware",
+    # Default-deny: every view needs a login unless it is marked @login_not_required (the
+    # public pages, auth flow and health checks). Must come after VerifiedEmailMiddleware so
+    # an unverified session is already anonymous by the time this runs.
+    "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_ratelimit.middleware.RatelimitMiddleware",
 ]

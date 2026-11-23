@@ -1,9 +1,14 @@
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
+from apps.accounts.testing import create_verified_user
 from apps.pages.views import handler400, handler403, handler404, handler500
 
 
 class FoundationAndPageTests(TestCase):
+    def setUp(self):
+        # The styleguide is not a public page (it needs a login), so tests of it sign in.
+        self.client.force_login(create_verified_user("pageuser", "pageuser@example.org", "pw-Str0ng-pass"))
+
     def test_healthz_endpoint(self):
         """Verify healthz returns 200 OK."""
         response = self.client.get(reverse("pages:healthz"))

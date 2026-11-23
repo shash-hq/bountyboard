@@ -1,6 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_not_required, login_required
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -20,6 +20,7 @@ from .ratelimits import login_identifier, rate, reset_email
 User = get_user_model()
 
 
+@login_not_required
 @ratelimit(key="ip", rate=rate("signup_per_ip"), method="POST", block=True)
 @require_http_methods(["GET", "POST"])
 def signup_view(request):
@@ -43,6 +44,7 @@ def signup_view(request):
     return render(request, "accounts/signup.html", {"form": form})
 
 
+@login_not_required
 @never_cache
 @require_http_methods(["GET", "POST"])
 def verify_email_view(request, token):
@@ -62,6 +64,7 @@ def verify_email_view(request, token):
     return render(request, "accounts/verify_email.html", {"token": token})
 
 
+@login_not_required
 @ratelimit(key="ip", rate=rate("verify_resend_per_ip"), method="POST", block=True)
 @ratelimit(key=reset_email, rate=rate("verify_resend_per_email"), method="POST", block=True)
 @require_http_methods(["GET", "POST"])
@@ -89,6 +92,7 @@ def _login_failure_limit(request, increment):
     )
 
 
+@login_not_required
 @ratelimit(key="ip", rate=rate("login_per_ip"), method="POST", block=True)
 @require_http_methods(["GET", "POST"])
 def login_view(request):
@@ -121,6 +125,7 @@ def login_view(request):
     return render(request, "accounts/login.html", {"form": form, "next": next_url})
 
 
+@login_not_required
 @require_POST
 def logout_view(request):
     if request.user.is_authenticated:

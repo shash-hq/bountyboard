@@ -65,7 +65,11 @@ class ContactDisclosureTests(TestCase):
 
     def test_anonymous_sees_nothing(self):
         self.client.logout()
-        self.assert_hidden(self.client.get(self.url), HANDLE_1, EMAIL_1, POSTER_EMAIL)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)  # the detail page needs a login
+        self.assertTrue(response["Location"].startswith(reverse("accounts:login")))
+        for needle in (HANDLE_1, EMAIL_1, POSTER_EMAIL):
+            self.assertNotIn(needle, response.content.decode())
 
     # --- after acceptance: exactly the two parties ---------------------------------------
 

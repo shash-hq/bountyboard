@@ -174,6 +174,7 @@ class BountyViewAndFilterTests(TestCase):
 
     def test_board_view_search_and_filters(self):
         """Verify ?q=, ?category=, and ?status= filtering."""
+        self.client.force_login(self.user2)  # the board needs a login
         res_search = self.client.get(reverse("board"), {"q": "Arduino"})
         self.assertEqual(res_search.status_code, 200)
         self.assertContains(res_search, "Arduino Sensor Debugging Task")
@@ -573,6 +574,7 @@ class SessionAndCookieFeatureTests(TestCase):
         self.user = create_verified_user(
             username="session_tester", email="session@campus.edu.in", password="Password123!"
         )
+        self.client.force_login(self.user)  # board and detail pages need a login
         future = timezone.now() + timedelta(days=5)
         self.bounties = []
         for i in range(7):
@@ -738,10 +740,11 @@ class ModeratorWorkflowTests(TestCase):
         hide_bounty(self.bounty.pk, self.mod_user, is_hidden=True)
         detail_url = reverse("bounties:detail", kwargs={"pk": self.bounty.pk, "slug": self.bounty.slug})
 
-        # Anonymous -> 404
+        # Anonymous -> login redirect (the detail page needs a login; nothing is disclosed)
         self.client.logout()
         resp_anon = self.client.get(detail_url)
-        self.assertEqual(resp_anon.status_code, 404)
+        self.assertEqual(resp_anon.status_code, 302)
+        self.assertTrue(resp_anon["Location"].startswith(reverse("accounts:login")))
 
         # Random student -> 404
         self.client.force_login(self.student)
