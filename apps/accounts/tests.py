@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 
 from .testing import create_verified_user
@@ -74,34 +74,22 @@ class AccountsAuthTests(TestCase):
             "This username is already taken. Pick a different handle.",
         )
 
-    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
-    def test_signup_allowed_email_domain_enforcement(self):
-        """Verify ALLOWED_EMAIL_DOMAIN rejects unauthorized domains."""
-        response = self.client.post(
-            reverse("accounts:signup"),
-            {
-                "username": "outsider",
-                "email": "outsider@gmail.com",
-                "password": "SecretPassword123!",
-                "password_confirm": "SecretPassword123!",
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Only email addresses ending with '@iitb.ac.in'", response.context["form"].errors["email"][0])
-
-        # And valid domain succeeds
-        response2 = self.client.post(
-            reverse("accounts:signup"),
-            {
-                "username": "insider",
-                "email": "insider@iitb.ac.in",
-                "password": "SecretPassword123!",
-                "password_confirm": "SecretPassword123!",
-            },
-            follow=True,
-        )
-        self.assertEqual(response2.status_code, 200)
-        self.assertTrue(User.objects.filter(username="insider").exists())
+    def test_signup_is_open_to_any_email_domain(self):
+        """The old domain gate is gone: any address can sign up, then must confirm it by link."""
+        for name, email in [("gmailer", "gmailer@gmail.com"), ("lookalike", "x@notlpu.co.in")]:
+            with self.subTest(email=email):
+                response = self.client.post(
+                    reverse("accounts:signup"),
+                    {
+                        "username": name,
+                        "email": email,
+                        "password": "SecretPassword123!",
+                        "password_confirm": "SecretPassword123!",
+                    },
+                )
+                self.assertEqual(response.status_code, 302)
+                user = User.objects.get(username=name)
+                self.assertIsNone(user.email_verified_at)  # not logged in, not verified
 
     def test_login_with_username_and_email(self):
         """Verify login works with both username and email."""
@@ -202,56 +190,3 @@ class AccountsAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("Reset your account password", mail.outbox[0].subject)
-
-
-class EmailDomainGateTests(TestCase):
-    """The domain gate must match the domain exactly or as a subdomain, never as a bare suffix."""
-
-    def _signup_form(self, email, username):
-        from apps.accounts.forms import SignupForm
-
-        return SignupForm(
-            data={
-                "username": username,
-                "email": email,
-                "password": "Zx9!long-pass",
-                "password_confirm": "Zx9!long-pass",
-            }
-        )
-
-    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
-    def test_lookalike_suffix_domain_is_rejected(self):
-        form = self._signup_form("eve@notiitb.ac.in", "eve")
-        self.assertFalse(form.is_valid())
-        self.assertIn("email", form.errors)
-
-    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
-    def test_subdomain_is_accepted(self):
-        form = self._signup_form("sam@cse.iitb.ac.in", "sam")
-        self.assertTrue(form.is_valid(), form.errors)
-
-    @override_settings(ALLOWED_EMAIL_DOMAIN="iitb.ac.in")
-    def test_uppercase_domain_is_accepted(self):
-        form = self._signup_form("Sam@IITB.AC.IN", "sam2")
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["email"], "sam@iitb.ac.in")
-
-    @override_settings(ALLOWED_EMAIL_DOMAIN="  IITB.ac.in ")
-    def test_configured_domain_is_normalized(self):
-        self.assertTrue(self._signup_form("sam@iitb.ac.in", "sam3").is_valid())
-        self.assertFalse(self._signup_form("eve@notiitb.ac.in", "eve2").is_valid())
-
-    @override_settings(ALLOWED_EMAIL_DOMAIN=".iitb.ac.in")
-    def test_leading_dot_setting_still_allows_domain_and_subdomains(self):
-        self.assertTrue(self._signup_form("sam@iitb.ac.in", "sam4").is_valid())
-        self.assertTrue(self._signup_form("sam@cse.iitb.ac.in", "sam5").is_valid())
-        self.assertFalse(self._signup_form("eve@notiitb.ac.in", "eve3").is_valid())
-
-    def test_helper_edge_cases(self):
-        from apps.accounts.forms import email_domain_allowed
-
-        self.assertTrue(email_domain_allowed("a@iitb.ac.in", "iitb.ac.in"))
-        self.assertTrue(email_domain_allowed("a@x.y.iitb.ac.in", "iitb.ac.in"))
-        self.assertFalse(email_domain_allowed("a@iitb.ac.in.evil.com", "iitb.ac.in"))
-        self.assertFalse(email_domain_allowed("a@evil.com", "iitb.ac.in"))
-        self.assertFalse(email_domain_allowed("a@", "iitb.ac.in"))

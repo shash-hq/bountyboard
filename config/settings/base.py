@@ -9,7 +9,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost"]),
-    ALLOWED_EMAIL_DOMAIN=(str, ""),
     DATABASE_URL=(str, f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
     SECURE_SSL_REDIRECT=(bool, False),
     SESSION_COOKIE_SECURE=(bool, False),
@@ -30,7 +29,6 @@ DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 if "testserver" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("testserver")
-ALLOWED_EMAIL_DOMAIN = env("ALLOWED_EMAIL_DOMAIN")
 
 # --- Campus verification (apps/accounts/identity.py) ---
 # Separate from SECRET_KEY on purpose, so rotating SECRET_KEY doesn't orphan every registration-
