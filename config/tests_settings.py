@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
+from django.conf import settings
 from django.test import SimpleTestCase
+from django.urls import reverse
 
 CONFIG_DIR = Path(__file__).resolve().parent
 GOOD_KEY = "k" * 20 + "Zx9-" * 10  # 60 chars, not on the insecure list
@@ -106,3 +108,10 @@ class EntryPointDefaultsTests(SimpleTestCase):
         for filename in ("wsgi.py", "asgi.py"):
             with self.subTest(filename):
                 self.assertEqual(self.default_settings_module(filename), "config.settings.prod")
+
+
+class AuthRedirectSettingsTests(SimpleTestCase):
+    def test_login_and_logout_redirect_settings_resolve_to_the_board(self):
+        # "pages:board" did not exist, so reverse() raised NoReverseMatch at login/logout time.
+        self.assertEqual(reverse(settings.LOGIN_REDIRECT_URL), "/")
+        self.assertEqual(reverse(settings.LOGOUT_REDIRECT_URL), "/")
