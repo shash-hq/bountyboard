@@ -3,6 +3,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
 from .models import Bounty, BountyStatus, Claim, ClaimStatus, Report
+from .policies import can_moderate
 from .notifications import (
     send_claim_accepted_notification,
     send_claim_rejected_notification,
@@ -238,7 +239,7 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
 
 def hide_bounty(bounty_id: int, user, is_hidden: bool = True) -> Bounty:
     """Moderator toggles visibility of a bounty."""
-    if not (user.is_authenticated and (user.has_perm("bounties.moderate") or user.is_staff)):
+    if not can_moderate(user):
         raise PermissionDenied("You do not have permission to moderate bounties.")
 
     try:
@@ -253,7 +254,7 @@ def hide_bounty(bounty_id: int, user, is_hidden: bool = True) -> Bounty:
 
 def resolve_report(report_id: int, user, hide_bounty_flag: bool = False) -> Report:
     """Moderator resolves an abuse report, optionally hiding the associated bounty."""
-    if not (user.is_authenticated and (user.has_perm("bounties.moderate") or user.is_staff)):
+    if not can_moderate(user):
         raise PermissionDenied("You do not have permission to moderate reports.")
 
     try:

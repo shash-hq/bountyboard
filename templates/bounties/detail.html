@@ -265,7 +265,7 @@
     {% endif %}
 
     <!-- MODERATOR CONTROLS -->
-    {% if perms.bounties.moderate or user.is_staff %}
+    {% if can_moderate %}
       <div class="brutal-card brutal-card--pink" style="margin-top: var(--spacing-4);">
         <h2 style="font-family: var(--font-display); font-size: var(--text-lg); margin-top: 0;">
           MODERATOR TOOLS

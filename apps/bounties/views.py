@@ -13,7 +13,13 @@ from config.http import safe_referer
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
 from .notifications import send_claim_received_notification
-from .policies import can_view_claim_contact, can_view_poster_contact
+from .policies import (
+    can_moderate,
+    can_view_claim_contact,
+    can_view_claims,
+    can_view_hidden_bounty,
+    can_view_poster_contact,
+)
 from .services import (
     accept_claim,
     cancel_bounty,
@@ -111,11 +117,7 @@ def bounty_detail_view(request, pk, slug):
 
     # Hidden bounty check: only poster and moderators can view
     if bounty.is_hidden:
-        can_moderate = (
-            request.user.is_authenticated
-            and (request.user == bounty.poster or request.user.has_perm("bounties.moderate"))
-        )
-        if not can_moderate:
+        if not can_view_hidden_bounty(request.user, bounty):
             raise Http404("This bounty has been hidden by moderators.")
 
     # Track recently viewed in session (last 5, distinct, most recent first)
@@ -132,7 +134,7 @@ def bounty_detail_view(request, pk, slug):
 
     # Claims list: poster sees all claims; other users do not see others' claims
     claims = []
-    if request.user == bounty.poster or (request.user.is_authenticated and request.user.has_perm("bounties.moderate")):
+    if can_view_claims(request.user, bounty):
         claims = list(bounty.claims.select_related("claimant", "bounty").order_by("-created_at"))
         for c in claims:
             c.contact_visible = can_view_claim_contact(request.user, c)
@@ -351,7 +353,7 @@ def bounty_report_view(request, pk):
 @login_required
 def mod_queue_view(request):
     """Moderator dashboard listing open abuse reports and hidden listings."""
-    if not (request.user.has_perm("bounties.moderate") or request.user.is_staff):
+    if not can_moderate(request.user):
         raise PermissionDenied("You do not have moderator permissions.")
 
     unresolved_reports = (
@@ -377,7 +379,7 @@ def mod_queue_view(request):
 @login_required
 def bounty_toggle_hide_view(request, pk):
     """Toggle whether a bounty is hidden from the public board."""
-    if not (request.user.has_perm("bounties.moderate") or request.user.is_staff):
+    if not can_moderate(request.user):
         raise PermissionDenied("You do not have moderator permissions.")
 
     bounty = get_object_or_404(Bounty, pk=pk)
@@ -397,7 +399,7 @@ def bounty_toggle_hide_view(request, pk):
 @login_required
 def report_resolve_view(request, pk):
     """Moderator resolves an abuse report, optionally hiding the bounty."""
-    if not (request.user.has_perm("bounties.moderate") or request.user.is_staff):
+    if not can_moderate(request.user):
         raise PermissionDenied("You do not have moderator permissions.")
 
     report = get_object_or_404(Report, pk=pk)
