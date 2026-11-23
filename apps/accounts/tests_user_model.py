@@ -7,6 +7,12 @@ from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
+
+from apps.accounts import desk
+from apps.accounts.identity import hash_reg_no
+from apps.accounts.models import AuditEvent, CampusVerification, StudentIdentity
+from apps.accounts.testing import create_verified_user
 
 User = get_user_model()
 
@@ -100,3 +106,65 @@ class UserAdminTests(TestCase):
 
     def test_email_is_editable_on_the_add_form(self):
         self.assertContains(self.client.get(reverse("admin:accounts_user_add")), 'name="email"')
+
+
+class CampusAdminTests(TestCase):
+    """The campus models are view-only in the admin, and the card name never reaches its HTML."""
+
+    def setUp(self):
+        self.root = User.objects.create_superuser("root", "root@x.com", "pw-Str0ng-pass")
+        self.client.force_login(self.root)
+        verifier = create_verified_user("vol", "vol@gmail.com", "pw-Str0ng-pass")
+        verifier.groups.add(Group.objects.get(name="Verifiers"))
+        self.student = create_verified_user("stu", "stu@gmail.com", "pw-Str0ng-pass")
+        now = timezone.now()
+        self.v = desk.verify_in_person(
+            verifier.pk, "stu", desk.presence_code(self.student.pk, now), "87654321", "Zorblax Quimby", now=now
+        )
+        self.audit = AuditEvent.objects.get()
+        self.ident = StudentIdentity.objects.get()
+
+    def test_pages_render_without_the_card_name_ciphertext_or_reg_no(self):
+        digest = hash_reg_no("87654321")[0]
+        ciphertext = CampusVerification.objects.only("card_name_enc").get(pk=self.v.pk).card_name_enc
+        pages = [
+            reverse("admin:accounts_campusverification_changelist"),
+            reverse("admin:accounts_campusverification_change", args=[self.v.pk]),
+            reverse("admin:accounts_studentidentity_changelist"),
+            reverse("admin:accounts_studentidentity_change", args=[self.ident.pk]),
+            reverse("admin:accounts_auditevent_changelist"),
+            reverse("admin:accounts_auditevent_change", args=[self.audit.pk]),
+            reverse("admin:accounts_identityreview_changelist"),
+        ]
+        for url in pages:
+            with self.subTest(url=url):
+                r = self.client.get(url)
+                self.assertEqual(r.status_code, 200)
+                body = r.content.decode()
+                for secret in ("Zorblax", "Quimby", "87654321", digest, ciphertext, "card_name_enc"):
+                    self.assertNotIn(secret, body)
+
+    def test_nothing_can_be_added_changed_or_deleted(self):
+        for model, obj in [("campusverification", self.v), ("studentidentity", self.ident), ("auditevent", self.audit)]:
+            with self.subTest(model=model):
+                self.assertEqual(self.client.get(reverse(f"admin:accounts_{model}_add")).status_code, 403)
+                delete = reverse(f"admin:accounts_{model}_delete", args=[obj.pk])
+                self.assertEqual(self.client.post(delete, {"post": "yes"}).status_code, 403)
+                change = reverse(f"admin:accounts_{model}_change", args=[obj.pk])
+                self.assertEqual(self.client.post(change, {"reg_no_last4": "0000"}).status_code, 403)
+        counts = (CampusVerification.objects.count(), StudentIdentity.objects.count(), AuditEvent.objects.count())
+        self.assertEqual(counts, (1, 1, 1))
+        self.assertEqual(StudentIdentity.objects.get().reg_no_last4, "4321")
+
+    def test_no_bulk_delete_action_is_offered_or_honoured(self):
+        url = reverse("admin:accounts_auditevent_changelist")
+        self.client.post(url, {"action": "delete_selected", "_selected_action": [self.audit.pk], "post": "yes"})
+        self.assertTrue(AuditEvent.objects.filter(pk=self.audit.pk).exists())
+        self.assertNotContains(self.client.get(url), "delete_selected")
+
+    def test_staff_fields_are_read_only_on_the_user_form(self):
+        r = self.client.get(reverse("admin:accounts_user_change", args=[self.student.pk]))
+        self.assertEqual(r.status_code, 200)
+        for name in ("staff_since", "staff_source", "staff_granted_by"):
+            self.assertNotContains(r, f'name="{name}"')
+        self.assertContains(r, "Staff role (read-only)")
