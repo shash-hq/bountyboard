@@ -49,7 +49,7 @@
   <header class="site-header" role="banner">
     <div class="container nav-container">
       <div style="display: flex; align-items: center; gap: var(--spacing-3);">
-        <a href="/" class="brand">
+        <a href="{% if user.is_authenticated %}{% url 'board' %}{% else %}{% url 'landing' %}{% endif %}" class="brand">
           <span>BOUNTY BOARD</span>
           <span class="brand-badge">₹ CAMPUS</span>
         </a>

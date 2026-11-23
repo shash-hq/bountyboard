@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from config.http import safe_referer
@@ -23,6 +24,14 @@ def robots_txt(request):
         f"Sitemap: {request.build_absolute_uri('/sitemap.xml')}",
     ]
     return HttpResponse("\n".join(lines), content_type="text/plain")
+
+
+@require_GET
+def landing(request):
+    """Public front door. Signed-in users go straight to the board."""
+    if request.user.is_authenticated:
+        return redirect("board")
+    return render(request, "pages/landing.html")
 
 
 @require_GET
@@ -59,7 +68,7 @@ def set_layout(request):
     layout = request.POST.get("layout", "grid")
     if layout not in ("grid", "list"):
         layout = "grid"
-    response = HttpResponseRedirect(safe_referer(request, fallback="/"))
+    response = HttpResponseRedirect(safe_referer(request, fallback=reverse("landing")))
     # 30 day max_age
     response.set_cookie("bb_layout", layout, max_age=60 * 60 * 24 * 30, samesite="Lax")
     return response

@@ -71,3 +71,21 @@ class FoundationAndPageTests(TestCase):
         resp500 = handler500(req)
         self.assertEqual(resp500.status_code, 500)
         self.assertIn("500", resp500.content.decode("utf-8"))
+
+
+class LandingAndBoardRoutingTests(TestCase):
+    def test_root_is_the_public_landing_page_for_anonymous_visitors(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pages/landing.html")
+        self.assertContains(response, reverse("accounts:signup"))
+
+    def test_signed_in_users_are_sent_from_the_root_to_the_board(self):
+        from apps.accounts.testing import create_verified_user
+        self.client.force_login(create_verified_user("lander", "lander@example.org", "pw-Str0ng-pass"))
+        response = self.client.get("/")
+        self.assertRedirects(response, reverse("board"))
+
+    def test_board_lives_at_board_not_at_the_root(self):
+        self.assertEqual(reverse("board"), "/board/")
+        self.assertEqual(reverse("landing"), "/")

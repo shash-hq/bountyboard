@@ -4,6 +4,7 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
 from apps.accounts.views import me_view
 from apps.bounties import views as bounty_views
+from apps.pages import views as pages_views
 from apps.pages.sitemaps import BountySitemap, StaticViewSitemap
 
 sitemaps = {
@@ -13,7 +14,8 @@ sitemaps = {
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("", bounty_views.board_view, name="board"),
+    path("", pages_views.landing, name="landing"),
+    path("board/", bounty_views.board_view, name="board"),
     path("me/", me_view, name="me"),
     path("accounts/", include("apps.accounts.urls", namespace="accounts")),
     path("bounties/", include("apps.bounties.urls", namespace="bounties")),

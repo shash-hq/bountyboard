@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Bounty Board | Campus micro-tasks{% endblock %}
+
+{% block content %}
+<section class="landing-hero">
+  <span class="stamp-badge stamp-open">CAMPUS MICRO-TASK MARKETPLACE</span>
+  <h1 class="landing-title">GOT A TASK? POST IT.<br>GOT SKILLS? CLAIM IT.</h1>
+  <p class="landing-lead">
+    Students post small paid tasks (₹10 to ₹10,000): debugging, slides, lab reports, errands.
+    Other students pitch for them. You settle the payment between yourselves, offline.
+  </p>
+  <div class="landing-actions">
+    <a href="{% url 'accounts:signup' %}" class="btn btn-primary btn-lg">SIGN UP</a>
+    <a href="{% url 'accounts:login' %}" class="btn btn-lg">LOG IN</a>
+  </div>
+  <p class="landing-note">Sign up with your email and confirm it. The board is for signed-in students only.</p>
+</section>
+
+<section class="landing-steps">
+  <div class="brutal-card"><h2 class="landing-step-title">1. POST</h2><p>Describe the task, set the reward and a deadline.</p></div>
+  <div class="brutal-card"><h2 class="landing-step-title">2. PITCH</h2><p>Classmates send a short pitch. The poster picks one.</p></div>
+  <div class="brutal-card"><h2 class="landing-step-title">3. SETTLE</h2><p>Finish the work and pay each other directly. No fees.</p></div>
+</section>
+
+<p class="landing-more">
+  <a href="{% url 'pages:about' %}">About</a> &middot;
+  <a href="{% url 'pages:guidelines' %}">Guidelines</a> &middot;
+  <a href="{% url 'pages:terms' %}">Terms</a> &middot;
+  <a href="{% url 'pages:privacy' %}">Privacy</a>
+</p>
+{% endblock %}

@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
@@ -94,7 +95,7 @@ def login_view(request):
     if request.user.is_authenticated:
         return redirect("board")
 
-    next_url = request.GET.get("next") or request.POST.get("next") or "/"
+    next_url = request.GET.get("next") or request.POST.get("next") or reverse("board")
 
     if request.method == "POST":
         # Only FAILED attempts count against an account (so a successful login never does, and
@@ -113,7 +114,7 @@ def login_view(request):
             # Security: ensure next URL is safe
             if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
                 return redirect(next_url)
-            return redirect("/")
+            return redirect("board")
     else:
         form = LoginForm()
 
@@ -126,7 +127,7 @@ def logout_view(request):
         username = request.user.username
         logout(request)
         messages.info(request, f"Logged out. See you next time, {username}!")
-    return redirect("/")
+    return redirect("landing")
 
 
 @login_required
