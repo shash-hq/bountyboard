@@ -111,7 +111,7 @@ class EntryPointDefaultsTests(SimpleTestCase):
 
 
 class AuthRedirectSettingsTests(SimpleTestCase):
-    def test_login_and_logout_redirect_settings_resolve_to_the_board(self):
+    def test_login_redirect_is_the_board_and_logout_redirect_is_the_landing_page(self):
         # "pages:board" did not exist, so reverse() raised NoReverseMatch at login/logout time.
-        self.assertEqual(reverse(settings.LOGIN_REDIRECT_URL), "/")
+        self.assertEqual(reverse(settings.LOGIN_REDIRECT_URL), "/board/")
         self.assertEqual(reverse(settings.LOGOUT_REDIRECT_URL), "/")

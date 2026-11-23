@@ -12,6 +12,7 @@ from datetime import timedelta
 from itertools import count
 
 from django.contrib.auth import get_user_model
+from apps.accounts.testing import create_verified_user
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
@@ -81,7 +82,7 @@ def in_worker(fn):
 
 def make_user(prefix):
     n = next(_seq)
-    return User.objects.create(username=f"{prefix}{n}", email=f"{prefix}{n}@example.com")
+    return create_verified_user(username=f"{prefix}{n}", email=f"{prefix}{n}@example.com")
 
 
 def make_bounty(poster):

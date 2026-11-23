@@ -91,7 +91,9 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
 ## Services (`apps/accounts/services.py`; lock rule: users locked in ascending id order, always after any bounty/claim locks)
 
 - **`send_verification_email(user)` / `confirm_email(token)`**
-  - The GET page shows a "Confirm" button and only the POST mutates. Gmail/Outlook link scanners prefetch GETs, so a GET must not consume the token.
+  - The link is `/accounts/verify-email/<uid>/<token>/`. The token hash is bound to the user id and password hash, so replacing the account or changing the password kills older links.
+  - The GET page shows the address and a password field and never mutates (Gmail/Outlook link scanners prefetch GETs). Only the POST mutates, and only with the right account password: the link alone proves mailbox access, not that the account is the reader's (pre-hijacking). On success the session is rotated and the user is logged in. The POST shares login's throttle (same per-IP bucket, same per-account failure budget).
+  - **`signup(username, email, password)`**: under a per-address advisory lock, an address held by an *unverified* account has that account deleted and replaced; a *verified* one is never touched and its owner gets a "you already have an account" email, with a response identical to a new address (no enumeration). Signup and resend share one per-address email budget. Stale unverified accounts (older than the link lifetime, no live link, no owned rows, no role) are purged lazily on collision and by `purge_unverified_accounts`.
   - On confirm: set `email_verified_at`. If the domain is in `ALLOWED_CAMPUS_DOMAINS` (exact domain match; trimmed and lowercased; default `["lpu.co.in"]`):
     - The confirm form also requires the reg no, unless the user already holds a binding.
     - Create a `CAMPUS_EMAIL` verification and close any prior unrevoked row with `SUPERSEDED`.

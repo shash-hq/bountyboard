@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from apps.accounts.testing import create_verified_user
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -20,8 +21,8 @@ User = get_user_model()
 @override_settings(SITE_URL="https://board.example.org/")  # trailing slash on purpose
 class EmailLinkTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create(username="eposter", email="eposter@example.org")
-        self.claimant = User.objects.create(username="eclaimant", email="eclaimant@example.org")
+        self.poster = create_verified_user(username="eposter", email="eposter@example.org")
+        self.claimant = create_verified_user(username="eclaimant", email="eclaimant@example.org")
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Email link bounty", description="x" * 30,
             reward=100, deadline=timezone.now() + timedelta(days=2),

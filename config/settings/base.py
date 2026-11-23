@@ -66,6 +66,11 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "apps.accounts.middleware.VerifiedEmailMiddleware",
+    # Default-deny: every view needs a login unless it is marked @login_not_required (the
+    # public pages, auth flow and health checks). Must come after VerifiedEmailMiddleware so
+    # an unverified session is already anonymous by the time this runs.
+    "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_ratelimit.middleware.RatelimitMiddleware",
 ]
@@ -134,8 +139,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Auth Redirects
 LOGIN_URL = "accounts:login"
-LOGIN_REDIRECT_URL = "board"  # root URLconf name for "/"; "pages:board" does not exist
-LOGOUT_REDIRECT_URL = "board"
+LOGIN_REDIRECT_URL = "board"  # root URLconf name for "/board/"
+LOGOUT_REDIRECT_URL = "landing"
 
 # Messages framework - map to neo-brutalist alert styles
 from django.contrib.messages import constants as messages
@@ -146,6 +151,9 @@ MESSAGE_TAGS = {
     messages.WARNING: "warning",
     messages.ERROR: "danger",
 }
+
+# How long an emailed verification link stays valid.
+EMAIL_VERIFICATION_TTL_HOURS = 24
 
 # Email backend default
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
@@ -166,6 +174,10 @@ RATE_LIMITS = {
     "signup_per_ip": "200/h",
     "password_reset_per_email": "3/h",
     "password_reset_per_ip": "30/h",
+    # Resending a verification link sends email (300/day budget): limit per mailbox and per IP.
+    # Applied whether or not the address has an account, so responses stay identical.
+    "verify_resend_per_email": "3/h",
+    "verify_resend_per_ip": "30/h",
 }
 
 # Cache backend (LocMem for dev & rate limiting)
