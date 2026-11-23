@@ -90,7 +90,18 @@ class SignupForm(forms.Form):
         return cleaned_data
 
 
+class ResendVerificationForm(forms.Form):
+    email = forms.EmailField(
+        widget=forms.EmailInput(attrs={
+            "class": "input-text",
+            "placeholder": "the email you signed up with",
+            "autocomplete": "email",
+        }),
+    )
+
+
 class LoginForm(forms.Form):
+    unverified = False  # set by clean() so the template can offer a "resend link" action
     username_or_email = forms.CharField(
         label="Username or Email",
         widget=forms.TextInput(attrs={
@@ -126,6 +137,11 @@ class LoginForm(forms.Form):
                 raise ValidationError("Invalid username/email or password.")
             if not user.is_active:
                 raise ValidationError("This account has been deactivated.")
+            # Checked only AFTER the password is right, so "unverified" is never revealed to
+            # someone who does not know the password.
+            if user.email_verified_at is None:
+                self.unverified = True
+                raise ValidationError("Confirm your email first: use the link we sent you.")
             cleaned_data["user"] = user
 
         return cleaned_data

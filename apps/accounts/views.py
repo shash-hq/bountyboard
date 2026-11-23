@@ -12,8 +12,8 @@ from django_ratelimit.decorators import ratelimit
 from django_ratelimit.exceptions import Ratelimited
 
 from apps.bounties.models import Bounty, Claim
-from .forms import LoginForm, SignupForm
-from .services import InvalidToken, confirm_email
+from .forms import LoginForm, ResendVerificationForm, SignupForm
+from .services import InvalidToken, confirm_email, send_verification_email
 from .ratelimits import login_identifier, rate, reset_email
 
 User = get_user_model()
@@ -23,7 +23,7 @@ User = get_user_model()
 @require_http_methods(["GET", "POST"])
 def signup_view(request):
     if request.user.is_authenticated:
-        return redirect("/")
+        return redirect("board")
 
     if request.method == "POST":
         form = SignupForm(request.POST)
@@ -32,9 +32,10 @@ def signup_view(request):
             email = form.cleaned_data["email"]
             password = form.cleaned_data["password"]
             user = User.objects.create_user(username=username, email=email, password=password)
-            login(request, user)
-            messages.success(request, f"Welcome to Bounty Board, {user.username}! Your campus account is live.")
-            return redirect("/")
+            # No login here: the address is unproven until its owner clicks the emailed link.
+            send_verification_email(user.pk)
+            messages.success(request, f"Account created. We emailed a confirmation link to {user.email}. Confirm it to log in.")
+            return redirect("accounts:login")
     else:
         form = SignupForm()
 
@@ -60,6 +61,26 @@ def verify_email_view(request, token):
     return render(request, "accounts/verify_email.html", {"token": token})
 
 
+@ratelimit(key="ip", rate=rate("verify_resend_per_ip"), method="POST", block=True)
+@ratelimit(key=reset_email, rate=rate("verify_resend_per_email"), method="POST", block=True)
+@require_http_methods(["GET", "POST"])
+def resend_verification_view(request):
+    """Send a fresh verification link. The response is identical whether or not the address
+    has an unverified account (no account enumeration), and the limits apply either way, so
+    one mailbox cannot be used to burn the daily email budget."""
+    if request.method == "POST":
+        form = ResendVerificationForm(request.POST)
+        if form.is_valid():
+            user = User.objects.filter(email__iexact=form.cleaned_data["email"], is_active=True).first()
+            if user is not None:
+                send_verification_email(user.pk)  # no-op if already verified
+            messages.info(request, "If that address belongs to an account that still needs confirming, we sent a new link. The older link no longer works.")
+            return redirect("accounts:login")
+    else:
+        form = ResendVerificationForm()
+    return render(request, "accounts/resend_verification.html", {"form": form})
+
+
 def _login_failure_limit(request, increment):
     return is_ratelimited(
         request, group="login-failures", key=login_identifier,
@@ -71,7 +92,7 @@ def _login_failure_limit(request, increment):
 @require_http_methods(["GET", "POST"])
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect("/")
+        return redirect("board")
 
     next_url = request.GET.get("next") or request.POST.get("next") or "/"
 

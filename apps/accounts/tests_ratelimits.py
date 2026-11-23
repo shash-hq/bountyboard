@@ -7,6 +7,8 @@ from django.urls import reverse
 
 from config.http import client_ip
 
+from .testing import create_verified_user
+
 User = get_user_model()
 PW = "Correct-horse-9"
 GENEROUS = {
@@ -15,6 +17,8 @@ GENEROUS = {
     "signup_per_ip": "1000/h",
     "password_reset_per_email": "1000/h",
     "password_reset_per_ip": "1000/h",
+    "verify_resend_per_email": "1000/h",
+    "verify_resend_per_ip": "1000/h",
 }
 
 
@@ -25,8 +29,8 @@ def limits(**overrides):
 class RateLimitTestBase(TestCase):
     def setUp(self):
         cache.clear()  # LocMem counters are process-wide and would leak between tests
-        self.alice = User.objects.create_user("alice", "alice@example.org", PW)
-        self.bob = User.objects.create_user("bob", "bob@example.org", PW)
+        self.alice = create_verified_user("alice", "alice@example.org", PW)
+        self.bob = create_verified_user("bob", "bob@example.org", PW)
 
     def login(self, who="alice", password="wrong-password", ip="10.0.0.1", **extra):
         return self.client.post(
@@ -112,6 +116,35 @@ class PasswordResetLimitTests(RateLimitTestBase):
         codes = [self.reset(f"user{i}@example.org").status_code for i in range(6)]
         self.assertIn(429, codes)
         self.assertNotEqual(self.reset("bob@example.org", ip="10.0.4.2").status_code, 429)
+
+
+class VerifyResendLimitTests(RateLimitTestBase):
+    def setUp(self):
+        super().setUp()
+        self.carol = User.objects.create_user("carol", "carol@example.org", PW)  # unverified
+
+    def resend(self, email, ip="10.0.8.1"):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(reverse("accounts:resend_verification"), {"email": email}, REMOTE_ADDR=ip)
+
+    @limits(verify_resend_per_email="2/h")
+    def test_one_mailbox_cannot_be_flooded(self):
+        mail.outbox.clear()
+        codes = [self.resend("carol@example.org", ip=f"10.0.9.{i}").status_code for i in range(1, 7)]
+        self.assertIn(429, codes)
+        self.assertLessEqual(len(mail.outbox), 3)  # the budget, not one email per request
+        self.assertNotEqual(self.resend("bob@example.org", ip="10.0.9.99").status_code, 429)
+
+    @limits(verify_resend_per_email="2/h")
+    def test_unknown_addresses_are_limited_identically(self):
+        codes = [self.resend("nobody@example.org", ip=f"10.0.10.{i}").status_code for i in range(1, 7)]
+        self.assertIn(429, codes)
+
+    @limits(verify_resend_per_ip="2/h")
+    def test_one_ip_cannot_flood_many_mailboxes(self):
+        codes = [self.resend(f"user{i}@example.org").status_code for i in range(6)]
+        self.assertIn(429, codes)
+        self.assertNotEqual(self.resend("carol@example.org", ip="10.0.8.2").status_code, 429)
 
 
 class Response429Tests(RateLimitTestBase):

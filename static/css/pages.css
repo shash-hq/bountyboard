@@ -384,3 +384,14 @@
   background-color: var(--ink);
   color: var(--white);
 }
+
+/* Login: resend-confirmation hint */
+.login-resend {
+  margin-top: var(--spacing-4);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.login-resend a {
+  font-weight: 800;
+  color: var(--ink);
+}

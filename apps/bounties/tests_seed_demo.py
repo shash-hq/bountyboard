@@ -104,3 +104,13 @@ class SeedDemoScopeTests(TestCase):
         User.objects.create_user("campus_mod", "mod@campus.edu.in", "pw-Strong-123", is_staff=True)
         with self.assertRaisesMessage(CommandError, "not a seed account"):
             seed()
+
+
+class SeedDemoLoginTests(TestCase):
+    @override_settings(DEBUG=True)
+    def test_seeded_accounts_can_log_in(self):
+        """Login refuses unverified emails, so demo accounts must be created verified."""
+        seed(password="Demo-pass-12345")
+        username, email = SEED_USERS[0][0], SEED_USERS[0][1]
+        self.assertIsNotNone(User.objects.get(username=username).email_verified_at)
+        self.assertTrue(self.client.login(username=username, password="Demo-pass-12345"))
