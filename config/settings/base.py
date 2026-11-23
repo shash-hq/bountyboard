@@ -32,6 +32,20 @@ if "testserver" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("testserver")
 ALLOWED_EMAIL_DOMAIN = env("ALLOWED_EMAIL_DOMAIN")
 
+# --- Campus verification (apps/accounts/identity.py) ---
+# Separate from SECRET_KEY on purpose, so rotating SECRET_KEY doesn't orphan every registration-
+# number binding. No committed default: dev.py supplies throwaway values, prod.py requires real ones.
+# If this key leaks together with the DB, the 8-digit reg-no space is brute-forced in seconds, so it
+# lives only in the host's env, never in a backup or the repo.
+REG_NO_HMAC_KEY = env("REG_NO_HMAC_KEY", default="")
+# Comma-separated Fernet keys for the card name. The FIRST encrypts; all are tried for decrypting, so
+# rotation is: prepend a new key, re-encrypt lazily, drop the old one later.
+CARD_NAME_KEYS = env.list("CARD_NAME_KEYS", default=[])
+# What a normalized registration number must look like (after stripping spaces and dashes).
+REG_NO_PATTERN = env("REG_NO_PATTERN", default=r"^\d{8}$")
+# How long a campus verification stays active before it must be renewed.
+VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
+
 # Application definition
 DJANGO_APPS = [
     "whitenoise.runserver_nostatic",

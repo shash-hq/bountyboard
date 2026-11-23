@@ -45,6 +45,28 @@ SITE_URL = _required("SITE_URL").rstrip("/")
 if not SITE_URL.startswith("https://"):
     raise ImproperlyConfigured("SITE_URL must be an https:// URL in production.")
 
+# Campus-verification keys. Separate from SECRET_KEY so rotating one doesn't break the other.
+REG_NO_HMAC_KEY = _required("REG_NO_HMAC_KEY")
+if len(REG_NO_HMAC_KEY) < 32 or REG_NO_HMAC_KEY == SECRET_KEY or REG_NO_HMAC_KEY.startswith("dev-only"):
+    raise ImproperlyConfigured("REG_NO_HMAC_KEY must be at least 32 characters and distinct from SECRET_KEY.")
+
+CARD_NAME_KEYS = _required_list("CARD_NAME_KEYS")
+if len(set(CARD_NAME_KEYS)) != len(CARD_NAME_KEYS):
+    raise ImproperlyConfigured("CARD_NAME_KEYS must not repeat a key.")
+for _key in CARD_NAME_KEYS:
+    try:
+        from cryptography.fernet import Fernet
+
+        Fernet(_key)
+    except (ValueError, TypeError) as exc:
+        raise ImproperlyConfigured(
+            "CARD_NAME_KEYS entries must be valid Fernet keys (32 url-safe base64 bytes); "
+            "generate one with: python -c 'from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())'"
+        ) from exc
+if "Jcr23Z9b0ORKdGnQQibh8ZEurkoxmpn_qvy-kcKfmss=" in CARD_NAME_KEYS:
+    raise ImproperlyConfigured("CARD_NAME_KEYS contains the committed development key.")
+
 # Security hardening
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=True)
