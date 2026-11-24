@@ -18,6 +18,7 @@ VALID_ENV = {
     "ALLOWED_HOSTS": "bountyboard.example.com",
     "CSRF_TRUSTED_ORIGINS": "https://bountyboard.example.com",
     "SITE_URL": "https://bountyboard.example.com",
+    "DATABASE_URL": "postgres://app:pw@db.example.com:5432/postgres",
     "REG_NO_HMAC_KEY": "r" * 16 + "Qw3-" * 8,  # 48 chars, distinct from SECRET_KEY
     "CARD_NAME_KEYS": "Zm9vYmFyLWNhcmQtbmFtZS1rZXktMzItYnl0ZXMhISE=",  # 32 bytes, url-safe b64
 }
@@ -79,6 +80,25 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
             with self.subTest(name=name, value=value):
                 with self.assertRaisesMessage(ImproperlyConfigured, expected):
                     self.load(**{name: value})
+
+    def test_database_url_must_be_a_postgres_url_never_sqlite(self):
+        bad = {
+            "sqlite file": "sqlite:////tmp/db.sqlite3",
+            "sqlite memory": "sqlite://:memory:",
+            "mysql": "mysql://u:p@h/db",
+            "no scheme": "db.example.com/postgres",
+        }
+        for label, value in bad.items():
+            with self.subTest(label):
+                with self.assertRaisesMessage(ImproperlyConfigured, "DATABASE_URL"):
+                    self.load(DATABASE_URL=value)
+
+    def test_database_settings_come_from_database_url(self):
+        s = self.load(DATABASE_URL="postgresql://app:pw@aws-0.pooler.example.com:5432/postgres")
+        db = s.DATABASES["default"]
+        self.assertTrue(db["ENGINE"].endswith("postgresql"))
+        self.assertEqual((db["HOST"], db["PORT"], db["NAME"]), ("aws-0.pooler.example.com", 5432, "postgres"))
+        self.assertEqual(db["CONN_MAX_AGE"], 600)
 
     def test_hmac_key_must_be_long_and_distinct_from_secret_key(self):
         for label, key in {"short": "short", "same as SECRET_KEY": GOOD_KEY}.items():
