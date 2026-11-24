@@ -23,9 +23,9 @@ POSTER_EMAIL = "poster.private@example.org"
 
 class ContactDisclosureTests(TestCase):
     def setUp(self):
-        self.poster = create_verified_user(username="cposter", email=POSTER_EMAIL)
-        self.c1 = create_verified_user(username="cclaimant1", email=EMAIL_1)
-        self.c2 = create_verified_user(username="cclaimant2", email=EMAIL_2)
+        self.poster = create_verified_user(username="cposter", email=POSTER_EMAIL, campus=True)
+        self.c1 = create_verified_user(username="cclaimant1", email=EMAIL_1, campus=True)
+        self.c2 = create_verified_user(username="cclaimant2", email=EMAIL_2, campus=True)
         self.stranger = create_verified_user(username="cstranger", email="stranger@example.org")
         self.moderator = create_verified_user(username="cmod", email="mod@example.org")
         self.moderator.user_permissions.add(Permission.objects.get(codename="moderate"))
@@ -106,8 +106,8 @@ class ContactDisclosureTests(TestCase):
 
 class ContactPolicyUnitTests(TestCase):
     def setUp(self):
-        self.poster = create_verified_user(username="upposter", email="p@example.org")
-        self.c1 = create_verified_user(username="upc1", email="c1@example.org")
+        self.poster = create_verified_user(username="upposter", email="p@example.org", campus=True)
+        self.c1 = create_verified_user(username="upc1", email="c1@example.org", campus=True)
         self.other = create_verified_user(username="upother", email="o@example.org")
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Policy unit bounty", description="x" * 30,

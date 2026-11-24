@@ -208,13 +208,13 @@ class BountyViewAndFilterTests(TestCase):
 class ClaimsLifecycleAndPermissionDenialTests(TestCase):
     def setUp(self):
         self.poster = create_verified_user(
-            username="poster", email="poster@campus.edu.in", password="Password123!"
+            username="poster", email="poster@campus.edu.in", password="Password123!", campus=True
         )
         self.claimant1 = create_verified_user(
-            username="claimant1", email="claimant1@campus.edu.in", password="Password123!"
+            username="claimant1", email="claimant1@campus.edu.in", password="Password123!", campus=True
         )
         self.claimant2 = create_verified_user(
-            username="claimant2", email="claimant2@campus.edu.in", password="Password123!"
+            username="claimant2", email="claimant2@campus.edu.in", password="Password123!", campus=True
         )
         self.bounty = Bounty.objects.create(
             poster=self.poster,
@@ -463,13 +463,13 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
     """
     def setUp(self):
         self.poster = create_verified_user(
-            username="race_poster", email="race_poster@campus.edu.in", password="Password123!"
+            username="race_poster", email="race_poster@campus.edu.in", password="Password123!", campus=True
         )
         self.c1_user = create_verified_user(
-            username="race_c1", email="race_c1@campus.edu.in", password="Password123!"
+            username="race_c1", email="race_c1@campus.edu.in", password="Password123!", campus=True
         )
         self.c2_user = create_verified_user(
-            username="race_c2", email="race_c2@campus.edu.in", password="Password123!"
+            username="race_c2", email="race_c2@campus.edu.in", password="Password123!", campus=True
         )
         self.bounty = Bounty.objects.create(
             poster=self.poster,

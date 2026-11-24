@@ -6,6 +6,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from apps.accounts import campus
+from apps.accounts.models import CampusVerification
 from apps.bounties.models import Bounty, BountyStatus, Category, Claim, ClaimStatus
 from apps.bounties.services import accept_claim
 
@@ -85,6 +87,15 @@ class Command(BaseCommand):
                 created_count += 1
             if username == "campus_mod":
                 user.groups.add(mod_group)  # moderator by group permission; never is_staff
+            else:
+                # The demo accepts claims between students, which now requires both parties to be
+                # campus-verified (I9). Demo students get a real verification row, like a student who
+                # confirmed a campus address.
+                if not campus.is_campus_verified(user):
+                    campus.supersede_active(user, timezone.now())  # a lapsed row would block the insert
+                    CampusVerification.objects.create(
+                        user=user, method="CAMPUS_EMAIL", verified_email=user.email, verified_at=timezone.now()
+                    )
             users[username] = user
 
         # Replace only what this command created before: bounties posted by the seed users.

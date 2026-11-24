@@ -12,7 +12,7 @@ from datetime import timedelta
 from itertools import count
 
 from django.contrib.auth import get_user_model
-from apps.accounts.testing import campus_verify, create_verified_user
+from apps.accounts.testing import create_verified_user
 from django.core.exceptions import ValidationError
 from django.db import connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
@@ -82,7 +82,7 @@ def in_worker(fn):
 
 def make_user(prefix):
     n = next(_seq)
-    return create_verified_user(username=f"{prefix}{n}", email=f"{prefix}{n}@example.com")
+    return create_verified_user(username=f"{prefix}{n}", email=f"{prefix}{n}@example.com", campus=True)
 
 
 def make_bounty(poster):
@@ -285,7 +285,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
     """I4: at most 5 OPEN bounties per user, even under concurrent creates."""
 
     def poster_with_open(self, n):
-        poster = campus_verify(make_user("capposter"))  # cap 5 needs a campus verification
+        poster = make_user("capposter")  # cap 5 needs a campus verification
         for _ in range(n):
             make_bounty(poster)
         return poster
@@ -326,7 +326,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
 @unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class EditBountyRaceTests(TransactionTestCase):
     def setUp(self):
-        self.poster = campus_verify(make_user("editposter"))
+        self.poster = make_user("editposter")
         self.claimant = make_user("editclaimant")
         self.bounty = make_bounty(self.poster)
         self.claim = make_claim(self.bounty, self.claimant)
@@ -366,7 +366,7 @@ class EditBountyRaceTests(TransactionTestCase):
 
 class BountyEditServiceTests(TestCase):
     def setUp(self):
-        self.poster = campus_verify(make_user("svcposter"))
+        self.poster = make_user("svcposter")
         self.other = make_user("svcother")
         self.bounty = make_bounty(self.poster)
 
