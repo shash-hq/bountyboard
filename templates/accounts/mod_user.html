@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject.username }} | Moderation{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card">
+    <h1 class="page-title">{{ subject.username }}</h1>
+    {% if identity %}
+      <p>Registration number binding: …{{ identity.reg_no_last4 }} ({{ identity.get_source_display }}, since {{ identity.bound_at|date:"M d, Y" }}).</p>
+    {% else %}
+      <p>No registration number is bound to this account.</p>
+    {% endif %}
+    <h2>Verification history</h2>
+    <ul>
+      {% for v in verifications %}
+        <li>{{ v.get_method_display }} on {{ v.verified_at|date:"M d, Y" }}{% if v.revoked_at %}; revoked {{ v.revoked_at|date:"M d, Y" }} ({{ v.get_revoke_reason_display }}){% else %}; active or lapsed{% endif %}</li>
+      {% empty %}
+        <li>No verifications.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {% if contact %}
+    <div class="brutal-card brutal-card--yellow">
+      <h2>Contact (this view was recorded)</h2>
+      <p>Email: <strong>{{ contact.email }}</strong></p>
+      <p>Handle: <strong>{{ contact.handle|default:"none set" }}</strong></p>
+    </div>
+  {% endif %}
+  {% if card_name %}
+    <div class="brutal-card brutal-card--yellow">
+      <h2>Name on the ID card (this view was recorded)</h2>
+      <p><strong>{{ card_name }}</strong></p>
+    </div>
+  {% endif %}
+
+  <div class="brutal-card">
+    <h2>Reveal contact details</h2>
+    <form method="post" action="{% url 'accounts:mod_reveal_contact' subject.pk %}" novalidate>
+      {% csrf_token %}
+      {{ reason_form.reason.label_tag }} {{ reason_form.reason }}
+      <button type="submit" class="btn btn-sm">REVEAL CONTACT</button>
+    </form>
+    <h2>Reveal name on the ID card</h2>
+    <form method="post" action="{% url 'accounts:mod_reveal_card_name' subject.pk %}" novalidate>
+      {% csrf_token %}
+      {{ reason_form.reason.label_tag }} {{ reason_form.reason }}
+      <button type="submit" class="btn btn-sm">REVEAL CARD NAME</button>
+    </form>
+  </div>
+
+  <div class="brutal-card">
+    <h2>Revoke campus verification</h2>
+    <form method="post" action="{% url 'accounts:mod_revoke' subject.pk %}" novalidate>
+      {% csrf_token %}
+      {{ revoke_form.reason_code.label_tag }} {{ revoke_form.reason_code }}
+      {{ revoke_form.note.label_tag }} {{ revoke_form.note }}
+      <button type="submit" class="btn btn-sm btn-danger">REVOKE</button>
+    </form>
+    <h2>Release registration-number binding</h2>
+    <form method="post" action="{% url 'accounts:mod_release_identity' subject.pk %}" novalidate>
+      {% csrf_token %}
+      {{ release_form.note.label_tag }} {{ release_form.note }}
+      <button type="submit" class="btn btn-sm btn-danger">RELEASE</button>
+    </form>
+  </div>
+
+  <div class="brutal-card">
+    <h2>Audit trail</h2>
+    <ul>
+      {% for e in audit %}
+        <li>{{ e.created_at|date:"M d, H:i" }}: {{ e.get_action_display|default:e.action }} by {{ e.actor.username|default:"(removed)" }}{% if e.reason %} [{{ e.reason }}]{% endif %}{% if e.note %}: {{ e.note }}{% endif %}</li>
+      {% empty %}
+        <li>Nothing recorded.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

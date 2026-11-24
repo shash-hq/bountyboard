@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
+from .models import RevokeReason
 from .services import username_available
 
 User = get_user_model()
@@ -191,3 +192,38 @@ class ContactHandleForm(forms.ModelForm):
         if any(ord(ch) < 32 for ch in value):
             raise ValidationError("Contact handle can't contain control characters.")
         return value
+
+
+class ModReasonForm(forms.Form):
+    """A required, free-text justification. Stored on the AuditEvent, never shown to the subject."""
+
+    reason = forms.CharField(
+        label="Why do you need this?", max_length=500,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )
+
+
+class RegNoLookupForm(ModReasonForm):
+    reg_no = RegNoField()
+
+
+class RevokeForm(forms.Form):
+    reason_code = forms.ChoiceField(label="Reason", choices=[])
+    note = forms.CharField(
+        label="Note (optional)", max_length=500, required=False,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        from .moderation import MODERATOR_REASONS
+
+        super().__init__(*args, **kwargs)
+        labels = dict(RevokeReason.choices)
+        self.fields["reason_code"].choices = [(r, labels[r]) for r in MODERATOR_REASONS]
+
+
+class ReleaseIdentityForm(forms.Form):
+    note = forms.CharField(
+        label="Why is the identity being released?", max_length=500,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )
