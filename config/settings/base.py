@@ -9,7 +9,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost"]),
-    ALLOWED_EMAIL_DOMAIN=(str, ""),
     DATABASE_URL=(str, f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
     SECURE_SSL_REDIRECT=(bool, False),
     SESSION_COOKIE_SECURE=(bool, False),
@@ -30,7 +29,33 @@ DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 if "testserver" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("testserver")
-ALLOWED_EMAIL_DOMAIN = env("ALLOWED_EMAIL_DOMAIN")
+
+# --- Campus verification (apps/accounts/identity.py) ---
+# Separate from SECRET_KEY on purpose, so rotating SECRET_KEY doesn't orphan every registration-
+# number binding. No committed default: dev.py supplies throwaway values, prod.py requires real ones.
+# If this key leaks together with the DB, the 8-digit reg-no space is brute-forced in seconds, so it
+# lives only in the host's env, never in a backup or the repo.
+REG_NO_HMAC_KEY = env("REG_NO_HMAC_KEY", default="")
+# Comma-separated Fernet keys for the card name. The FIRST encrypts; all are tried for decrypting, so
+# rotation is: prepend a new key, re-encrypt lazily, drop the old one later.
+CARD_NAME_KEYS = env.list("CARD_NAME_KEYS", default=[])
+# What a normalized registration number must look like (after stripping spaces and dashes).
+REG_NO_PATTERN = env("REG_NO_PATTERN", default=r"^\d{8}$")
+# Exact-match email domains that count as campus addresses. NOT a suffix match: "notlpu.co.in" and
+# "lpu.co.in.evil.com" must not pass. Used only to auto-verify at email confirmation (never to gate
+# signup, and never as a role signal: students and staff both have these addresses).
+ALLOWED_CAMPUS_DOMAINS = [
+    d.strip().lower().lstrip("@") for d in env.list("ALLOWED_CAMPUS_DOMAINS", default=["lpu.co.in"]) if d.strip()
+]
+# Exact email addresses (comma-separated) that are granted the staff role when they confirm their
+# address. Staff is never inferred from a domain: students hold @lpu.co.in addresses too.
+STAFF_EMAIL_ALLOWLIST = [e.strip().lower() for e in env.list("STAFF_EMAIL_ALLOWLIST", default=[]) if e.strip()]
+# Per-verifier caps on in-person verifications, so a compromised verifier account can't mass-verify.
+# Counted from the AuditEvent table (survives restarts, unlike a LocMem counter).
+VERIFIER_LIMIT_HOURLY = env.int("VERIFIER_LIMIT_HOURLY", default=30)
+VERIFIER_LIMIT_DAILY = env.int("VERIFIER_LIMIT_DAILY", default=150)
+# How long a campus verification stays active before it must be renewed.
+VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 
 # Application definition
 DJANGO_APPS = [

@@ -10,5 +10,4 @@ def global_ui_context(request):
     return {
         "bb_layout": layout,
         "DEBUG": settings.DEBUG,
-        "ALLOWED_EMAIL_DOMAIN": getattr(settings, "ALLOWED_EMAIL_DOMAIN", ""),
     }

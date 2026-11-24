@@ -1,5 +1,4 @@
 from django import forms
-from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -7,22 +6,6 @@ from django.core.exceptions import ValidationError
 from .services import username_available
 
 User = get_user_model()
-
-
-def email_domain_allowed(email: str, allowed_domain: str) -> bool:
-    """True if the email's domain is exactly ``allowed_domain`` or a subdomain of it.
-
-    A bare ``endswith(domain)`` is wrong: "notiitb.ac.in" ends with "iitb.ac.in".
-    Requiring the "." boundary means only "iitb.ac.in" and "x.iitb.ac.in" pass.
-    Both sides are stripped and lowercased (DNS names are case-insensitive). A leading "@" or
-    "." on the configured value (".iitb.ac.in" is a common way to say "this domain and its
-    subdomains") is ignored.
-    """
-    allowed = allowed_domain.strip().lower().lstrip("@.")
-    domain = email.strip().lower().rpartition("@")[2]
-    if not allowed or not domain:
-        return False
-    return domain == allowed or domain.endswith("." + allowed)
 
 
 class SignupForm(forms.Form):
@@ -65,16 +48,9 @@ class SignupForm(forms.Form):
     def clean_email(self):
         # No uniqueness check here on purpose: telling a stranger "this address already has an
         # account" is an enumeration oracle. services.signup() handles an address that is in use.
-        email = self.cleaned_data["email"].strip().lower()
-
-        # Optional ALLOWED_EMAIL_DOMAIN restriction
-        allowed_domain = getattr(settings, "ALLOWED_EMAIL_DOMAIN", "").strip()
-        if allowed_domain:
-            if not email_domain_allowed(email, allowed_domain):
-                raise ValidationError(
-                    f"Only email addresses ending with '@{allowed_domain}' are permitted on this campus board."
-                )
-        return email
+        # Signup is open to any domain. Being a campus student is established separately, at email
+        # confirmation (campus.verify_campus_email) or in person; the domain gates nothing here.
+        return self.cleaned_data["email"].strip().lower()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -100,6 +76,26 @@ class ConfirmEmailForm(forms.Form):
             "autocomplete": "current-password",
         }),
     )
+
+    def __init__(self, *args, ask_reg_no=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if ask_reg_no:
+            self.fields["reg_no"] = RegNoField()
+
+
+class RegNoField(forms.CharField):
+    """Registration number, collected only on the campus-email path."""
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            label="Registration number",
+            max_length=32,
+            widget=forms.TextInput(attrs={
+                "class": "input-text", "placeholder": "e.g. 12345678",
+                "inputmode": "numeric", "autocomplete": "off",
+            }),
+            **kwargs,
+        )
 
 
 class ResendVerificationForm(forms.Form):

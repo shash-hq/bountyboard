@@ -55,6 +55,9 @@ jobs:
         ALLOWED_HOSTS: bountyboard.example.com
         CSRF_TRUSTED_ORIGINS: https://bountyboard.example.com
         SITE_URL: https://bountyboard.example.com
+        # Throwaway CI-only values; prod.py refuses to boot without keys of this shape.
+        REG_NO_HMAC_KEY: ci-only-reg-no-hmac-key-0123456789-abcdefghijklmnop
+        CARD_NAME_KEYS: Zm9vYmFyLWNhcmQtbmFtZS1rZXktMzItYnl0ZXMhISE=
       run: |
         python manage.py check --deploy --fail-level WARNING --settings=config.settings.prod
 
@@ -65,4 +68,4 @@ jobs:
     - name: Run Test Suite & Coverage
       run: |
         coverage run --branch manage.py test --settings=config.settings.dev
-        coverage report --fail-under=85 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
+        coverage report --fail-under=87 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"

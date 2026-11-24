@@ -17,6 +17,14 @@
         <label class="form-label" for="id_password">Password</label>
         {{ form.password }}
       </div>
+      {% if form.reg_no %}
+      <div class="form-group">
+        <label class="form-label" for="id_reg_no">Registration number</label>
+        {{ form.reg_no }}
+        {% for e in form.reg_no.errors %}<div class="field-error">{{ e }}</div>{% endfor %}
+        <p class="confirm-aside">Your campus email verifies you as an LPU student. We store only a keyed hash of this number and its last 4 digits, so one student can't hold several verified accounts.</p>
+      </div>
+      {% endif %}
       <button type="submit" class="btn btn-primary btn-block">CONFIRM &amp; LOG IN &rarr;</button>
     </form>
 
