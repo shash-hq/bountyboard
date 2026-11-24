@@ -13,6 +13,7 @@ from django_ratelimit.decorators import ratelimit
 from django_ratelimit.exceptions import Ratelimited
 
 from apps.bounties.models import Bounty, Claim
+from apps.bounties.policies import can_moderate
 from .forms import ConfirmEmailForm, LoginForm, ResendVerificationForm, SignupForm
 from .ratelimits import confirm_account, login_identifier, rate, reset_email
 from .campus import needs_reg_no
@@ -205,7 +206,7 @@ def me_view(request):
         "posted_bounties": posted_bounties,
         "submitted_claims": submitted_claims,
         "open_bounties_count": open_bounties_count,
-        "is_moderator": user.groups.filter(name="Moderators").exists() or user.is_staff or user.has_perm("bounties.moderate"),
+        "is_moderator": can_moderate(user),
     }
     return render(request, "accounts/me.html", context)
 

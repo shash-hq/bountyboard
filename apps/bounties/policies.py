@@ -1,6 +1,9 @@
-"""Who may see whose contact details. The single source of truth (invariant I6).
+"""Who may do and see what. The single source of truth for authorization (invariant I6).
 
 Views compute these and pass booleans to templates; templates must not re-implement them.
+
+Roles: a moderator is anyone holding ``bounties.moderate`` (via the Moderators group, or a
+superuser). ``is_staff`` only means "may open /admin/" and grants NO moderation power.
 
 Rule (decision 3): nothing is revealed before acceptance. After a claim is ACCEPTED, the
 poster and that claimant may see each other's contact. Nobody else, including moderators:
@@ -22,3 +25,28 @@ def can_view_poster_contact(user, bounty) -> bool:
         return False
     accepted = bounty.accepted_claim
     return accepted is not None and accepted.status == ClaimStatus.ACCEPTED and accepted.claimant_id == user.id
+
+
+def can_moderate(user) -> bool:
+    """May ``user`` moderate listings and reports?
+
+    ``has_perm`` is True for active superusers and for members of a group holding
+    ``bounties.moderate`` (the Moderators group); False for anonymous and inactive users.
+    Deliberately does not look at ``is_staff``: that flag is for admin-site access only.
+    """
+    return bool(getattr(user, "is_authenticated", False)) and user.has_perm("bounties.moderate")
+
+
+def can_view_hidden_bounty(user, bounty) -> bool:
+    """A hidden bounty is visible only to its poster and to moderators."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return user.id == bounty.poster_id or can_moderate(user)
+
+
+def can_view_claims(user, bounty) -> bool:
+    """The full claim list is for the poster and moderators; other users see none.
+
+    Seeing the list is not seeing contact: that stays behind ``can_view_claim_contact``.
+    """
+    return can_view_hidden_bounty(user, bounty)

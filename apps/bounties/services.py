@@ -1,21 +1,13 @@
 from django.contrib.auth import get_user_model
-from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
+from .exceptions import DomainError, InvalidTransition, NotPermitted  # noqa: F401 (re-exported)
 from .models import Bounty, BountyStatus, Claim, ClaimStatus, Report
+from .policies import can_moderate
 from .notifications import (
     send_claim_accepted_notification,
     send_claim_rejected_notification,
 )
-
-
-class InvalidTransition(ValidationError):
-    """The requested state change is not valid for the row's CURRENT state.
-
-    Raised after the row lock is taken and the status re-read, so it also covers
-    "someone else changed this a moment ago". Subclasses ValidationError so existing
-    callers/tests keep working; views read ``.messages`` so users never see ``['...']``.
-    """
 
 
 def _lock_bounty(bounty_id: int) -> Bounty:
@@ -82,7 +74,7 @@ def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
         bounty = _lock_bounty(bounty_id)
 
         if user != bounty.poster:
-            raise PermissionDenied("You do not have permission to edit this bounty.")
+            raise NotPermitted("You do not have permission to edit this bounty.")
         if bounty.status != BountyStatus.OPEN or bounty.is_expired:
             raise InvalidTransition("Only active OPEN bounties can be edited.")
 
@@ -122,7 +114,7 @@ def accept_claim(claim_id: int, user) -> Claim:
 
         # Permission check: Only the poster can accept claims
         if user != bounty.poster:
-            raise PermissionDenied("Only the bounty poster can accept claims.")
+            raise NotPermitted("Only the bounty poster can accept claims.")
 
         # Status checks, on the freshly locked rows
         if bounty.status != BountyStatus.OPEN:
@@ -167,7 +159,7 @@ def reject_claim(claim_id: int, user) -> Claim:
         claim = _lock_claim(claim_id)
 
         if user != bounty.poster:
-            raise PermissionDenied("Only the bounty poster can reject claims.")
+            raise NotPermitted("Only the bounty poster can reject claims.")
 
         if claim.status != ClaimStatus.PENDING:
             raise InvalidTransition(f"Cannot reject a claim that is already '{claim.status}'.")
@@ -186,7 +178,7 @@ def withdraw_claim(claim_id: int, user) -> Claim:
         claim = _lock_claim(claim_id)
 
         if user.id != claim.claimant_id:
-            raise PermissionDenied("You can only withdraw your own claims.")
+            raise NotPermitted("You can only withdraw your own claims.")
 
         if claim.status != ClaimStatus.PENDING:
             raise InvalidTransition(f"Cannot withdraw a claim that is '{claim.status}'.")
@@ -202,7 +194,7 @@ def mark_bounty_done(bounty_id: int, user) -> Bounty:
         bounty = _lock_bounty(bounty_id)
 
         if user != bounty.poster:
-            raise PermissionDenied("Only the bounty poster can mark a bounty as done.")
+            raise NotPermitted("Only the bounty poster can mark a bounty as done.")
 
         if bounty.status != BountyStatus.CLAIMED:
             raise InvalidTransition("Only claimed bounties can be marked done.")
@@ -218,7 +210,7 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
         bounty = _lock_bounty(bounty_id)
 
         if user != bounty.poster:
-            raise PermissionDenied("Only the bounty poster can cancel a bounty.")
+            raise NotPermitted("Only the bounty poster can cancel a bounty.")
 
         if bounty.status != BountyStatus.OPEN:
             raise InvalidTransition("Only OPEN bounties can be cancelled.")
@@ -238,13 +230,13 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
 
 def hide_bounty(bounty_id: int, user, is_hidden: bool = True) -> Bounty:
     """Moderator toggles visibility of a bounty."""
-    if not (user.is_authenticated and (user.has_perm("bounties.moderate") or user.is_staff)):
-        raise PermissionDenied("You do not have permission to moderate bounties.")
+    if not can_moderate(user):
+        raise NotPermitted("You do not have permission to moderate bounties.")
 
     try:
         bounty = Bounty.objects.get(id=bounty_id)
     except Bounty.DoesNotExist:
-        raise ValidationError("Bounty does not exist.")
+        raise InvalidTransition("Bounty does not exist.")
 
     bounty.is_hidden = is_hidden
     bounty.save(update_fields=["is_hidden", "updated_at"])
@@ -253,13 +245,13 @@ def hide_bounty(bounty_id: int, user, is_hidden: bool = True) -> Bounty:
 
 def resolve_report(report_id: int, user, hide_bounty_flag: bool = False) -> Report:
     """Moderator resolves an abuse report, optionally hiding the associated bounty."""
-    if not (user.is_authenticated and (user.has_perm("bounties.moderate") or user.is_staff)):
-        raise PermissionDenied("You do not have permission to moderate reports.")
+    if not can_moderate(user):
+        raise NotPermitted("You do not have permission to moderate reports.")
 
     try:
         report = Report.objects.select_related("bounty").get(id=report_id)
     except Report.DoesNotExist:
-        raise ValidationError("Report does not exist.")
+        raise InvalidTransition("Report does not exist.")
 
     report.resolved = True
     report.save(update_fields=["resolved"])

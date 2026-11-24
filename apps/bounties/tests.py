@@ -4,13 +4,14 @@ from django.contrib.auth import get_user_model
 from apps.accounts.testing import create_verified_user
 from django.contrib.auth.models import Group, Permission
 from django.core import mail
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import DatabaseError, OperationalError, connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.bounties.exceptions import InvalidTransition, NotPermitted
 from apps.bounties.models import (
     Bounty,
     BountyStatus,
@@ -344,7 +345,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             message="First proposal from claimant 1.",
             contact="WhatsApp: +91 9111111111",
         )
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotPermitted):
             accept_claim(c1.id, self.claimant2)
 
     def test_non_poster_cannot_reject_claim(self):
@@ -355,7 +356,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             message="First proposal from claimant 1.",
             contact="WhatsApp: +91 9111111111",
         )
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotPermitted):
             reject_claim(c1.id, self.claimant2)
 
     def test_claimant_can_withdraw_pending_claim(self):
@@ -377,7 +378,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             message="First proposal from claimant 1.",
             contact="WhatsApp: +91 9111111111",
         )
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotPermitted):
             withdraw_claim(c1.id, self.claimant2)
 
     def test_cannot_withdraw_non_pending_claim(self):
@@ -389,13 +390,13 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             contact="WhatsApp: +91 9111111111",
             status=ClaimStatus.ACCEPTED,
         )
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(InvalidTransition):
             withdraw_claim(c1.id, self.claimant1)
 
     def test_mark_done_rules(self):
         """Rule: Only poster can mark done, and only when CLAIMED."""
         # When OPEN, cannot mark done
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(InvalidTransition):
             mark_bounty_done(self.bounty.id, self.poster)
 
         # Transition to CLAIMED
@@ -408,7 +409,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         accept_claim(c1.id, self.poster)
 
         # Non-poster cannot mark done
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotPermitted):
             mark_bounty_done(self.bounty.id, self.claimant1)
 
         # Poster marks done -> SUCCESS
@@ -418,7 +419,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
     def test_cancel_rules(self):
         """Rule: Only poster can cancel, and only when OPEN."""
         # Non-poster cannot cancel
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotPermitted):
             cancel_bounty(self.bounty.id, self.claimant1)
 
         # Poster cancels -> SUCCESS
@@ -426,7 +427,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         self.assertEqual(cancelled.status, BountyStatus.CANCELLED)
 
         # Once CANCELLED, cannot cancel again
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(InvalidTransition):
             cancel_bounty(self.bounty.id, self.poster)
 
     def test_contact_visibility_rules(self):
@@ -558,7 +559,7 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
         # Exactly ONE thread must succeed
         self.assertEqual(len(results), 1)
         self.assertEqual(len(errors), 1)
-        self.assertTrue(isinstance(errors[0], (ValidationError, DatabaseError, OperationalError)))
+        self.assertTrue(isinstance(errors[0], (InvalidTransition, ValidationError, DatabaseError, OperationalError)))
 
         # Verify DB state: Bounty is CLAIMED, accepted_claim points to winner, other is REJECTED
         self.bounty.refresh_from_db()

@@ -13,7 +13,7 @@ from itertools import count
 
 from django.contrib.auth import get_user_model
 from apps.accounts.testing import create_verified_user
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from apps.bounties import services
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
-from apps.bounties.services import InvalidTransition
+from apps.bounties.exceptions import InvalidTransition, NotPermitted
 
 User = get_user_model()
 ITERATIONS = 15  # a race is probabilistic per attempt; repeat to make a regression likely to show
@@ -377,7 +377,7 @@ class BountyEditServiceTests(TestCase):
         self.assertEqual(self.bounty.status, BountyStatus.OPEN)
 
     def test_non_poster_cannot_edit(self):
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotPermitted):
             services.update_bounty_details(self.bounty.id, self.other, reward=250)
 
     def test_cannot_edit_after_cancel(self):

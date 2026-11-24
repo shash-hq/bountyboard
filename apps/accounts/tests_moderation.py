@@ -90,6 +90,14 @@ class RevokeTests(ModTestCase):
             moderation.revoke_verification(self.mod.pk, self.student.pk, "LEFT_CAMPUS", "x" * 501)
         self.assertTrue(campus.is_campus_verified(self.student))
 
+    def test_is_staff_alone_grants_no_moderation_power(self):
+        """PR 2's rule (policies.can_moderate): the admin-site flag is not a moderator role."""
+        self.desk_verify()
+        staff_only = mk("staffer", is_staff=True)
+        with self.assertRaises(NotPermitted):
+            moderation.revoke_verification(staff_only.pk, self.student.pk, "LEFT_CAMPUS")
+        self.assertTrue(campus.is_campus_verified(self.student))
+
     def test_a_removed_moderators_membership_applies_immediately(self):
         self.desk_verify()
         self.mod.groups.clear()
