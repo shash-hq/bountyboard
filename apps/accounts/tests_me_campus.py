@@ -73,7 +73,7 @@ class MeCampusPanelTests(TestCase):
     def test_expired_verification_shows_as_expired_with_a_fresh_code(self):
         CampusVerification.objects.create(
             user=self.user, method=VerificationMethod.CAMPUS_EMAIL, verified_email=self.user.email,
-            verified_at=timezone.now() - timedelta(days=366))
+            verified_at=timezone.now() - timedelta(days=settings.VERIFICATION_TTL_DAYS + 1))
         r = self.client.get(reverse("me"))
         self.assertContains(r, "expired on")
         self.assertNotContains(r, "revoked")
@@ -86,7 +86,7 @@ class MeCampusPanelTests(TestCase):
         self.assertContains(self.client.get(reverse("me")), "was revoked")
 
     def test_expired_date_is_the_expiry_not_the_verification_date(self):
-        verified = timezone.now() - timedelta(days=400)
+        verified = timezone.now() - timedelta(days=settings.VERIFICATION_TTL_DAYS + 35)
         CampusVerification.objects.create(
             user=self.user, method=VerificationMethod.CAMPUS_EMAIL, verified_email=self.user.email, verified_at=verified)
         r = self.client.get(reverse("me"))
@@ -96,7 +96,7 @@ class MeCampusPanelTests(TestCase):
     def test_a_row_the_sweeper_closed_as_expired_still_says_expired_not_revoked(self):
         CampusVerification.objects.create(
             user=self.user, method=VerificationMethod.CAMPUS_EMAIL, verified_email=self.user.email,
-            verified_at=timezone.now() - timedelta(days=400), revoked_at=timezone.now(),
+            verified_at=timezone.now() - timedelta(days=settings.VERIFICATION_TTL_DAYS + 35), revoked_at=timezone.now(),
             revoke_reason=RevokeReason.EXPIRED)
         r = self.client.get(reverse("me"))
         self.assertContains(r, "expired on")
