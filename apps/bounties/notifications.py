@@ -52,9 +52,9 @@ def send_claim_accepted_notification(claim):
         f"Agreed Reward: ₹{claim.bounty.reward}\n"
         f"Deadline: {claim.bounty.deadline.strftime('%Y-%m-%d %H:%M')}\n\n"
         f"Poster Contact Email: {poster.email}\n"
-        f"Your Provided Handle: {claim.contact}\n\n"
-        f"NEXT STEPS:\n"
-        f"1. Reach out to {poster.username} directly via email or your provided WhatsApp handle.\n"
+        + (f"Poster Contact Handle: {poster.contact_handle}\n" if poster.contact_handle else "")
+        + f"\nNEXT STEPS:\n"
+        f"1. Reach out to {poster.username} directly using the contact details above.\n"
         f"2. Complete the deliverable before the deadline.\n"
         f"3. Receive payment of ₹{claim.bounty.reward} directly offline via UPI or Cash.\n\n"
         f"— Bounty Board Campus Marketplace"

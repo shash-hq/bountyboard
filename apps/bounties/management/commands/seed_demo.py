@@ -436,14 +436,12 @@ class Command(BaseCommand):
             bounty=b1,
             claimant=users["priya_cs"],
             message="I built a custom BLE telemetry bridge last semester using ESP-IDF. I can fix this in under an hour tonight.",
-            contact="WhatsApp: +91 98450 11223",
             status=ClaimStatus.PENDING,
         )
         c2 = Claim.objects.create(
             bounty=b1,
             claimant=users["kabir_ai"],
             message="I have an nRF Sniffer dongle with me in Hostel 4. We can capture Wireshark BLE packets together and diagnose.",
-            contact="WhatsApp: +91 97410 44556",
             status=ClaimStatus.PENDING,
         )
 
@@ -453,7 +451,6 @@ class Command(BaseCommand):
             bounty=b_claimed,
             claimant=users["arjun_ece"],
             message="Control systems is my core elective. I have the complete Lagrangian derivation in my notebook already.",
-            contact="WhatsApp: +91 91234 56789",
             status=ClaimStatus.PENDING,
         )
         accept_claim(c_claimed.id, users["rohan_mech"])
@@ -464,7 +461,6 @@ class Command(BaseCommand):
             bounty=b_done,
             claimant=users["priya_cs"],
             message="Delivered Figma vector exports and high-res PDF. Work completed.",
-            contact="priya.cs@campus.edu.in",
             status=ClaimStatus.PENDING,
         )
         accept_claim(c_done.id, users["ananya_design"])

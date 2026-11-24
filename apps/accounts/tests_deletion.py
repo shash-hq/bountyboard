@@ -26,8 +26,8 @@ def bounty(poster, status=BountyStatus.OPEN, title="Some task"):
     )
 
 
-def claim(b, claimant, status=ClaimStatus.PENDING, contact="+91 99999 11111"):
-    return Claim.objects.create(bounty=b, claimant=claimant, message="m" * 12, contact=contact, status=status)
+def claim(b, claimant, status=ClaimStatus.PENDING):
+    return Claim.objects.create(bounty=b, claimant=claimant, message="m" * 12, status=status)
 
 
 def accepted(b, claimant, bounty_status=BountyStatus.CLAIMED):
@@ -96,16 +96,14 @@ class AnonymizeTests(Base):
             self.assertIsNone(r.card_name_enc)
             self.assertFalse(r.verified_email)
 
-    def test_claim_contact_is_scrubbed(self):
-        b = bounty(self.other)
-        c = claim(b, self.stu)
-        c2 = claim(bounty(self.other, title="Other task"), create_verified_user("z", "z@gmail.com", PW), contact="keep")
+    def test_only_the_deleted_users_pending_claims_are_withdrawn(self):
+        c = claim(bounty(self.other), self.stu)
+        c2 = claim(bounty(self.other, title="Other task"), create_verified_user("z", "z@gmail.com", PW))
         deletion.delete_account(self.stu.pk)
         c.refresh_from_db()
-        self.assertEqual(c.contact, "")
-        self.assertEqual(c.status, ClaimStatus.WITHDRAWN)
         c2.refresh_from_db()
-        self.assertEqual(c2.contact, "keep")  # someone else's claim is untouched
+        self.assertEqual(c.status, ClaimStatus.WITHDRAWN)
+        self.assertEqual(c2.status, ClaimStatus.PENDING)  # someone else's claim is untouched
 
     def test_open_bounties_are_cancelled_and_pending_claims_withdrawn_through_the_services(self):
         mine = bounty(self.stu)

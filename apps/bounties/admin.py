@@ -42,9 +42,9 @@ class BountyAdmin(admin.ModelAdmin):
 
 @admin.register(Claim)
 class ClaimAdmin(admin.ModelAdmin):
-    list_display = ["id", "bounty", "claimant", "status", "contact", "created_at"]
+    list_display = ["id", "bounty", "claimant", "status", "created_at"]
     list_filter = ["status", "created_at"]
-    search_fields = ["claimant__username", "bounty__title", "message", "contact"]
+    search_fields = ["claimant__username", "bounty__title", "message"]
     readonly_fields = ["created_at", "updated_at"]
 
 

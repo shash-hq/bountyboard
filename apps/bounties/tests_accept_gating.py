@@ -27,7 +27,7 @@ def mkbounty(poster):
 
 
 def mkclaim(bounty, claimant):
-    return Claim.objects.create(bounty=bounty, claimant=claimant, message="m" * 12, contact="c")
+    return Claim.objects.create(bounty=bounty, claimant=claimant, message="m" * 12)
 
 
 class GatingTests(TestCase):

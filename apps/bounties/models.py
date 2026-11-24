@@ -154,10 +154,6 @@ class Claim(models.Model):
         validators=[MinLengthValidator(10, "Message must be at least 10 characters.")],
         help_text="Why you can solve this task (10-500 characters).",
     )
-    contact = models.CharField(
-        max_length=150,
-        help_text="WhatsApp number or contact handle (visible ONLY to the poster).",
-    )
     status = models.CharField(
         max_length=15,
         choices=ClaimStatus.choices,

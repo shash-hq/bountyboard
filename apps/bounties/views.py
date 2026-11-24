@@ -16,10 +16,9 @@ from .notifications import send_claim_received_notification
 from .exceptions import DomainError
 from .policies import (
     can_moderate,
-    can_view_claim_contact,
+    can_view_contact,
     can_view_claims,
     can_view_hidden_bounty,
-    can_view_poster_contact,
     open_bounty_cap,
 )
 from .services import (
@@ -141,7 +140,7 @@ def bounty_detail_view(request, pk, slug):
     if can_view_claims(request.user, bounty):
         claims = list(bounty.claims.select_related("claimant", "bounty").order_by("-created_at"))
         for c in claims:
-            c.contact_visible = can_view_claim_contact(request.user, c)
+            c.contact_visible = can_view_contact(request.user, c.claimant, bounty)
 
     claim_form = ClaimForm() if bounty.can_claim(request.user) else None
     report_form = ReportForm() if request.user.is_authenticated and request.user != bounty.poster else None
@@ -154,7 +153,7 @@ def bounty_detail_view(request, pk, slug):
         "report_form": report_form,
         "can_edit": bounty.can_edit(request.user),
         "is_poster": request.user == bounty.poster,
-        "show_poster_contact": can_view_poster_contact(request.user, bounty),
+        "show_poster_contact": can_view_contact(request.user, bounty.poster, bounty),
     }
     return render(request, "bounties/detail.html", context)
 
@@ -271,12 +270,11 @@ def bounty_claim_view(request, pk):
                 bounty.pk,
                 request.user,
                 message=form.cleaned_data["message"],
-                contact=form.cleaned_data["contact"],
             )
             send_claim_received_notification(claim)
             messages.success(
                 request,
-                f"Your claim on '{bounty.title}' was submitted! The poster will review your contact handle.",
+                f"Your claim on '{bounty.title}' was submitted! The poster will review it. If they accept, you'll both see each other's contact details.",
             )
         except (DomainError, ValidationError) as e:
             messages.error(request, _error_text(e))
@@ -297,7 +295,7 @@ def claim_accept_view(request, pk):
         accept_claim(claim.pk, request.user)
         messages.success(
             request,
-            f"Accepted claim by {claim.claimant.username}! You can now coordinate via their contact handle: {claim.contact}",
+            f"Accepted claim by {claim.claimant.username}! Their contact details are now shown below.",
         )
     except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))

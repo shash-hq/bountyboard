@@ -10,7 +10,7 @@ The user row is kept but scrubbed and deactivated, never deleted. Why not ``DELE
   review like any duplicate. The revocation history stays too, so the ban state survives.
 
 What is removed: username, email, names, contact handle, password, group/permission/staff grants, the verification
-email token, the encrypted card name, the campus-email snapshot, and free-text claim contact. What
+email token, the encrypted card name, the campus-email snapshot. What
 stays: ids, bounties, claims, reports, audit rows, the HMAC binding and revocation rows (no personal
 data: a keyed hash, last 4 digits, reasons). Bounty and claim *text* the user wrote stays too, shown
 under the placeholder username; scrubbing user-authored content is a separate decision.
@@ -92,7 +92,6 @@ def _anonymize(user, now) -> None:
     mine = CampusVerification.objects.filter(user=user)
     mine.filter(method=VerificationMethod.IN_PERSON).update(card_name_enc=None)
     mine.filter(method=VerificationMethod.CAMPUS_EMAIL).update(verified_email="")
-    Claim.objects.filter(claimant=user).update(contact="")  # free-text phone/handle
 
     # Unique, unguessable placeholders: a fixed "deleted-<id>" could be pre-registered by someone
     # else and make this save violate the case-insensitive unique constraints.

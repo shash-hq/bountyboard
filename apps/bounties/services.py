@@ -105,7 +105,7 @@ def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
     return bounty
 
 
-def create_claim(bounty_id: int, claimant, message: str, contact: str) -> Claim:
+def create_claim(bounty_id: int, claimant, message: str) -> Claim:
     """Submit a claim. Locks the bounty so a claim cannot land on a bounty that was
     accepted/cancelled concurrently, and so a double-submit is detected, not a 500."""
     with transaction.atomic():
@@ -118,7 +118,7 @@ def create_claim(bounty_id: int, claimant, message: str, contact: str) -> Claim:
         if Claim.objects.filter(bounty=bounty, claimant=claimant).exists():
             raise InvalidTransition("You have already submitted a claim on this bounty.")
 
-        claim = Claim(bounty=bounty, claimant=claimant, message=message, contact=contact)
+        claim = Claim(bounty=bounty, claimant=claimant, message=message)
         claim.save()
     return claim
 

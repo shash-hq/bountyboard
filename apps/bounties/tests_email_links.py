@@ -27,7 +27,7 @@ class EmailLinkTests(TestCase):
             poster=self.poster, title="Email link bounty", description="x" * 30,
             reward=100, deadline=timezone.now() + timedelta(days=2),
         )
-        self.claim = Claim.objects.create(bounty=self.bounty, claimant=self.claimant, message="m" * 12, contact="h")
+        self.claim = Claim.objects.create(bounty=self.bounty, claimant=self.claimant, message="m" * 12)
 
     def body(self):
         self.assertEqual(len(mail.outbox), 1)

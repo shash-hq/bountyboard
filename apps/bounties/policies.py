@@ -6,8 +6,8 @@ Roles: a moderator is anyone holding ``bounties.moderate`` (via the Moderators g
 superuser). ``is_staff`` only means "may open /admin/" and grants NO moderation power.
 
 Rule (decision 3): nothing is revealed before acceptance. After a claim is ACCEPTED, the
-poster and that claimant may see each other's contact. Nobody else, including moderators:
-moderator access to contact will be a separate, audited action.
+poster and that claimant may see each other's contact (profile email + contact handle). Nobody
+else, including moderators: moderator access to contact will be a separate, audited action.
 """
 from django.conf import settings
 
@@ -34,19 +34,24 @@ def open_bounty_cap(user, now=None) -> int:
     return settings.OPEN_BOUNTY_CAP_EMAIL_VERIFIED
 
 
-def can_view_claim_contact(user, claim) -> bool:
-    """May ``user`` see the claimant's contact handle and email on this claim?"""
-    if not getattr(user, "is_authenticated", False) or claim.status != ClaimStatus.ACCEPTED:
-        return False
-    return user.id == claim.bounty.poster_id or user.id == claim.claimant_id
+def can_view_contact(viewer, subject, bounty) -> bool:
+    """May ``viewer`` see ``subject``'s contact (email, and the profile's contact handle)?
 
+    True only when the bounty has an ACCEPTED claim and ``viewer`` and ``subject`` are its two
+    different parties: the poster and the accepted claimant, in either direction. Nobody else,
+    including moderators (moderator access to contact is a separate, audited action), and nobody
+    before acceptance. Contact is the person's *profile*, not something typed at pitch time.
 
-def can_view_poster_contact(user, bounty) -> bool:
-    """May ``user`` see the poster's contact? Only the claimant whose claim was accepted."""
-    if not getattr(user, "is_authenticated", False):
+    Not re-checked against current verification: contact already exchanged stays visible after a
+    later revocation, matching "existing CLAIMED bounties and contact already shown are left alone".
+    """
+    if not getattr(viewer, "is_authenticated", False) or viewer.id == subject.id:
         return False
     accepted = bounty.accepted_claim
-    return accepted is not None and accepted.status == ClaimStatus.ACCEPTED and accepted.claimant_id == user.id
+    if accepted is None or accepted.status != ClaimStatus.ACCEPTED:
+        return False
+    parties = {bounty.poster_id, accepted.claimant_id}
+    return viewer.id in parties and subject.id in parties
 
 
 def can_moderate(user) -> bool:
@@ -78,6 +83,6 @@ def can_view_hidden_bounty(user, bounty) -> bool:
 def can_view_claims(user, bounty) -> bool:
     """The full claim list is for the poster and moderators; other users see none.
 
-    Seeing the list is not seeing contact: that stays behind ``can_view_claim_contact``.
+    Seeing the list is not seeing contact: that stays behind ``can_view_contact``.
     """
     return can_view_hidden_bounty(user, bounty)

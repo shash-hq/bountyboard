@@ -96,7 +96,7 @@ def make_bounty(poster):
 
 
 def make_claim(bounty, claimant):
-    return Claim.objects.create(bounty=bounty, claimant=claimant, message="m" * 12, contact="c")
+    return Claim.objects.create(bounty=bounty, claimant=claimant, message="m" * 12)
 
 
 @unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
@@ -169,7 +169,7 @@ class TransitionRaceTests(TransactionTestCase):
 
         def late_claim():
             try:
-                outcome["ok"] = services.create_claim(bounty.id, late, "m" * 12, "c2")
+                outcome["ok"] = services.create_claim(bounty.id, late, "m" * 12)
             except Exception as e:  # noqa: BLE001
                 outcome["err"] = e
             finally:
@@ -197,8 +197,8 @@ class TransitionRaceTests(TransactionTestCase):
             _, bounty = self.fresh()
             claimant = make_user("dbl")
             out = run_together(
-                lambda: services.create_claim(bounty.id, claimant, "m" * 12, "c"),
-                lambda: services.create_claim(bounty.id, claimant, "m" * 12, "c"),
+                lambda: services.create_claim(bounty.id, claimant, "m" * 12),
+                lambda: services.create_claim(bounty.id, claimant, "m" * 12),
             )
             self.assert_one_winner(out)  # no IntegrityError / 500
             self.assertEqual(Claim.objects.filter(bounty=bounty, claimant=claimant).count(), 1)
@@ -262,7 +262,7 @@ class FriendlyErrorViewTests(TestCase):
     def test_duplicate_claim_post_is_a_flash_not_a_500(self):
         self.client.force_login(self.c1)
         r = self.client.post(
-            reverse("bounties:claim", args=[self.bounty.pk]), {"message": "m" * 12, "contact": "c"}, follow=True
+            reverse("bounties:claim", args=[self.bounty.pk]), {"message": "m" * 12}, follow=True
         )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(Claim.objects.filter(bounty=self.bounty, claimant=self.c1).count(), 1)

@@ -83,7 +83,7 @@
                   <strong>Deadline:</strong> {{ b.deadline|date:"M d, Y H:i" }} &bull;
                   <strong>Total Claims:</strong> {{ b.claims.count }}
                   {% if b.accepted_claim %}
-                    &bull; <strong>Accepted:</strong> {{ b.accepted_claim.claimant.username }} ({{ b.accepted_claim.contact }})
+                    &bull; <strong>Accepted:</strong> {{ b.accepted_claim.claimant.username }} (contact details are on the bounty page)
                   {% endif %}
                 </div>
 
@@ -161,13 +161,13 @@
 
               {% if c.status == 'ACCEPTED' %}
                 <div style="background-color: var(--mint); border: 2px solid var(--ink); padding: var(--spacing-3); font-weight: 700; font-size: var(--text-sm); margin-bottom: var(--spacing-2);">
-                  🎉 YOUR CLAIM WAS ACCEPTED! Poster contact email: <u>{{ c.bounty.poster.email }}</u>. Coordinate directly and settle offline!
+                  🎉 YOUR CLAIM WAS ACCEPTED! The poster's contact details are on the bounty page. Coordinate directly and settle offline!
                 </div>
               {% endif %}
 
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-3); padding-top: var(--spacing-2); font-size: var(--text-xs);">
                 <div>
-                  Submitted on {{ c.created_at|date:"M d, Y H:i" }} &bull; Contact handle provided: {{ c.contact }}
+                  Submitted on {{ c.created_at|date:"M d, Y H:i" }}
                 </div>
 
                 <div>
