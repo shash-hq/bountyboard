@@ -9,7 +9,29 @@ Rule (decision 3): nothing is revealed before acceptance. After a claim is ACCEP
 poster and that claimant may see each other's contact. Nobody else, including moderators:
 moderator access to contact will be a separate, audited action.
 """
+from django.conf import settings
+
+from apps.accounts import campus
+
 from .models import ClaimStatus
+
+
+def is_campus_verified(user, now=None) -> bool:
+    """Does ``user`` hold an active campus verification (not revoked AND within the TTL)?
+
+    Time-based, never sweeper-based: a missed tick cannot extend anyone's access. A lapsed user gets
+    exactly what a user who left campus gets: no accepting or being accepted, the lower bounty cap,
+    and existing CLAIMED bounties untouched.
+    """
+    return bool(getattr(user, "is_authenticated", False)) and campus.is_campus_verified(user, now)
+
+
+def open_bounty_cap(user, now=None) -> int:
+    """How many live OPEN bounties ``user`` may have: the campus cap if campus-verified, else the
+    email-verified cap. Read it under the user row lock (see services.create_bounty)."""
+    if is_campus_verified(user, now):
+        return settings.OPEN_BOUNTY_CAP_CAMPUS_VERIFIED
+    return settings.OPEN_BOUNTY_CAP_EMAIL_VERIFIED
 
 
 def can_view_claim_contact(user, claim) -> bool:
