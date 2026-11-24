@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.shortcuts import redirect, render
@@ -13,11 +14,13 @@ from django_ratelimit.decorators import ratelimit
 from django_ratelimit.exceptions import Ratelimited
 
 from apps.bounties.models import Bounty, Claim
-from apps.bounties.policies import can_moderate
-from .forms import ConfirmEmailForm, LoginForm, ResendVerificationForm, SignupForm
-from .ratelimits import confirm_account, login_identifier, rate, reset_email
+from apps.bounties.exceptions import DomainError
+from apps.bounties.policies import can_moderate, can_verify_students
+from . import desk
+from .forms import ConfirmEmailForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
+from .ratelimits import confirm_account, desk_verifier, login_identifier, rate, reset_email
 from .campus import needs_reg_no
-from .identity import InvalidRegNo
+from .identity import InvalidCardName, InvalidRegNo
 from .services import InvalidToken, UsernameTaken, confirm_email, peek_confirmation, send_verification_email, signup
 
 User = get_user_model()
@@ -178,6 +181,38 @@ def logout_view(request):
         logout(request)
         messages.info(request, f"Logged out. See you next time, {username}!")
     return redirect("landing")
+
+
+@login_required
+@ratelimit(group="desk", key=desk_verifier, rate=rate("desk_per_verifier"), method="POST", block=True)
+@never_cache
+@require_http_methods(["GET", "POST"])
+def desk_view(request):
+    """The verifier desk: a volunteer who has seen the student's physical ID card marks them verified.
+
+    Gated on ``accounts.verify_student`` alone (see ``can_verify_students``), so a verifier gets no
+    moderation or contact access from this page. Plain POST + redirect; no JS. The rate limit
+    counts every submission (a wrong presence code included), which is what stops code guessing;
+    the service separately caps successful verifications per verifier.
+    """
+    if not can_verify_students(request.user):
+        raise PermissionDenied("You are not allowed to verify students.")
+    form = DeskVerifyForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        cd = form.cleaned_data
+        try:
+            desk.verify_in_person(request.user.pk, cd["username"], cd["code"], cd["reg_no"], cd["card_name"])
+        except InvalidRegNo:
+            form.add_error("reg_no", InvalidRegNo.messages[0])
+        except InvalidCardName:
+            form.add_error("card_name", InvalidCardName.messages[0])
+        except DomainError as e:
+            form.add_error(None, e.messages[0])
+        else:
+            # Name the student only; never echo the registration number or the card name.
+            messages.success(request, f"{cd['username']} is now campus-verified.")
+            return redirect("accounts:desk")
+    return render(request, "accounts/desk.html", {"form": form})
 
 
 @login_required

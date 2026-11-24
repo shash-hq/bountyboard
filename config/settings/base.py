@@ -203,6 +203,9 @@ RATE_LIMITS = {
     # Applied whether or not the address has an account, so responses stay identical.
     "verify_resend_per_email": "3/h",
     "verify_resend_per_ip": "30/h",
+    # Every desk submission, successful or not, per verifier. The service caps successful
+    # verifications; this caps *guessing* presence codes (a wrong code is not a verification).
+    "desk_per_verifier": "60/h",
 }
 
 # Cache backend (LocMem for dev & rate limiting)
