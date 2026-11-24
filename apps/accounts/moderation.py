@@ -15,7 +15,7 @@ from apps.bounties.models import Bounty, BountyStatus, NotificationKind
 from apps.bounties.policies import CANCELLABLE_REVOKE_REASONS, can_moderate
 
 from .errors import InvalidState, NotPermitted
-from .identity import decrypt_card_name
+from .identity import decrypt_card_name, hash_reg_no
 from .models import AuditEvent, CampusVerification, RevokeReason, StudentIdentity, User, VerificationMethod
 
 # Reasons a moderator may give. EMAIL_CHANGED / EXPIRED / SUPERSEDED are system-only.
@@ -157,3 +157,53 @@ def _lock_any(actor_id, subject_id):
     if subject is None:
         raise InvalidState("No such user.")
     return actor, subject
+
+
+def _require_moderator_and_reason(actor_id, reason):
+    reason = _clean_note(reason)
+    if not reason:
+        raise InvalidState("Say why you need this.")
+    return reason
+
+
+def lookup_by_reg_no(actor_id, raw_reg_no, reason, now=None):
+    """Which account, if any, is bound to this registration number?
+
+    For a moderator who has the number in front of them (a dispute, an identity review). The input
+    is hashed with the server key and compared with ``StudentIdentity.reg_no_hmac``; nothing is
+    ever stored in the clear and the result carries only the account and the last 4 digits. Every
+    lookup is audited, hit or miss, BEFORE the result is returned: a moderator cannot probe
+    numbers without leaving a trail. A malformed number raises ``InvalidRegNo`` and is not audited
+    (nothing was looked up).
+    """
+    reason = _require_moderator_and_reason(actor_id, reason)
+    digest, _last4 = hash_reg_no(raw_reg_no)
+    now = now or timezone.now()
+    with transaction.atomic():
+        actor = User.objects.select_for_update().filter(pk=actor_id).first()
+        if actor is None or not can_moderate(actor):
+            raise NotPermitted("You are not allowed to moderate.")
+        identity = StudentIdentity.objects.select_related("user").filter(reg_no_hmac=digest).first()
+        AuditEvent.objects.create(
+            actor=actor, subject=identity.user if identity else None, action="REG_NO_LOOKUP",
+            reason="MATCH" if identity else "NO_MATCH", note=reason, created_at=now,
+        )
+        return identity
+
+
+def reveal_contact_for_moderation(actor_id, user_id, reason, now=None):
+    """The user's email and contact handle, for a moderator who needs to reach them.
+
+    Moderators otherwise never see contact details (``can_view_contact`` excludes them). A reason
+    is required, and the AuditEvent is written in the same transaction BEFORE the values are
+    returned, so there is no view without a record and no record of a view that rolled back.
+    Returns ``(email, contact_handle)``.
+    """
+    reason = _require_moderator_and_reason(actor_id, reason)
+    now = now or timezone.now()
+    with transaction.atomic():
+        actor, subject = _lock(actor_id, user_id)
+        AuditEvent.objects.create(
+            actor=actor, subject=subject, action="CONTACT_VIEWED", reason="", note=reason, created_at=now,
+        )
+        return subject.email, subject.contact_handle
