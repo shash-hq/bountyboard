@@ -47,6 +47,17 @@ class StaffConstraintTests(TestCase):
         User.objects.filter(pk=u.pk).update(staff_source=None, staff_since=None)
 
 
+class DeletedAccountConstraintTests(TestCase):
+    def test_a_deleted_account_cannot_be_active(self):
+        u = mkuser("a")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            User.objects.filter(pk=u.pk).update(deleted_at=timezone.now())  # is_active still True
+        User.objects.filter(pk=u.pk).update(deleted_at=timezone.now(), is_active=False)
+
+    def test_an_active_account_may_have_no_deleted_at(self):
+        User.objects.filter(pk=mkuser("a").pk).update(is_active=False)  # suspended, not deleted
+
+
 class StudentIdentityConstraintTests(TestCase):
     def test_reg_no_hmac_is_unique_across_users(self):
         a, b = mkuser("a"), mkuser("b")
@@ -110,6 +121,16 @@ class CampusVerificationConstraintTests(TestCase):
         a, v = mkuser("a"), mkuser("v")
         with self.assertRaises(IntegrityError), transaction.atomic():
             CampusVerification.objects.create(user=a, method="IN_PERSON", verified_by=v)
+
+    def test_a_revoked_in_person_row_may_have_its_card_name_wiped(self):
+        """Account deletion removes the name but keeps the row as revocation history; only a
+        CLOSED row may lack it (test_in_person_requires_card_name covers the active case)."""
+        a, v = mkuser("a"), mkuser("v")
+        row = CampusVerification.objects.create(
+            user=a, method="IN_PERSON", verified_by=v, card_name_enc=None,
+            revoked_at=timezone.now(), revoke_reason="ACCOUNT_DELETED",
+        )
+        self.assertIsNone(row.card_name_enc)
 
     def test_in_person_with_null_identity_is_accepted(self):
         """A reg-no collision verifies the user with identity=NULL (plan: a collision never

@@ -31,3 +31,7 @@ class SubjectNotFound(AccountsError):
 
 class InvalidState(AccountsError):
     """The row is not in a state where this action applies (re-read under the lock)."""
+
+
+class DeletionBlocked(AccountsError):
+    """The account has work in flight that must be finished or cancelled first."""
