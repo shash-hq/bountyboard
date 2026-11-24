@@ -12,6 +12,7 @@ from .testing import create_verified_user
 
 PW = "pw-12345-abc"
 REG = "87654321"
+WRONG_CODE = "xxxxxx"  # not digits, so it can never equal a real presence code
 CARD_NAME = "Asha Verma Quillfeather"
 
 
@@ -77,7 +78,7 @@ class VerifierHasNoModerationPowerTests(DeskViewTestCase):
         self.assertNotContains(self.client.get(reverse("me")), reverse("bounties:mod_queue"))
 
     def test_desk_page_never_shows_the_students_email(self):
-        r = self.post(code="000000")  # fails, re-renders the form
+        r = self.post(code=WRONG_CODE)  # fails, re-renders the form
         self.assertNotContains(r, self.student.email)
 
 
@@ -94,7 +95,7 @@ class VerifyThroughTheDeskTests(DeskViewTestCase):
         self.assertEqual(decrypt_card_name(CampusVerification.objects.defer(None).get(pk=v.pk).card_name_enc), CARD_NAME)
 
     def test_wrong_code_verifies_nobody_and_shows_an_error(self):
-        r = self.post(code="000000")
+        r = self.post(code=WRONG_CODE)
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "wrong or has expired")
         self.assertFalse(CampusVerification.objects.exists())
@@ -114,6 +115,12 @@ class VerifyThroughTheDeskTests(DeskViewTestCase):
             "username": "vol", "code": desk.presence_code(self.verifier.pk), "reg_no": REG, "card_name": CARD_NAME})
         self.assertContains(r, "cannot verify yourself")
 
+    def test_a_failed_submission_does_not_echo_the_presence_code(self):
+        code = desk.presence_code(self.student.pk)
+        r = self.post(code=code, reg_no="abc")  # right code, bad reg no: the form re-renders
+        self.assertContains(r, "Enter a valid registration number.")
+        self.assertNotContains(r, f'value="{code}"')
+
     def test_get_does_not_verify(self):
         self.client.get(reverse("accounts:desk"), {"username": "stu", "code": desk.presence_code(self.student.pk)})
         self.assertFalse(CampusVerification.objects.exists())
@@ -125,7 +132,7 @@ class VerifyThroughTheDeskTests(DeskViewTestCase):
 class DeskRateLimitTests(DeskViewTestCase):
     @override_settings(RATE_LIMITS={**GENEROUS, "desk_per_verifier": "3/h"})
     def test_the_fourth_submission_is_refused_even_though_all_were_wrong_codes(self):
-        statuses = [self.post(code="000000").status_code for _ in range(5)]
+        statuses = [self.post(code=WRONG_CODE).status_code for _ in range(5)]
         self.assertEqual(statuses[:3], [200, 200, 200])
         self.assertEqual(statuses[3:], [429, 429])
 
@@ -133,6 +140,6 @@ class DeskRateLimitTests(DeskViewTestCase):
     def test_the_budget_is_per_verifier_not_shared(self):
         other = in_group(mk("vol2"), "Verifiers")
         for _ in range(3):
-            self.post(code="000000")
+            self.post(code=WRONG_CODE)
         self.client.force_login(other)
-        self.assertEqual(self.post(code="000000").status_code, 200)
+        self.assertEqual(self.post(code=WRONG_CODE).status_code, 200)

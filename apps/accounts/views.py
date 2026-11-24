@@ -25,6 +25,7 @@ from .forms import ConfirmEmailForm, DeskVerifyForm, LoginForm, ResendVerificati
 from .ratelimits import confirm_account, desk_verifier, login_identifier, rate, reset_email
 from .campus import needs_reg_no
 from .identity import InvalidCardName, InvalidRegNo
+from .models import RevokeReason
 from .services import InvalidToken, UsernameTaken, confirm_email, peek_confirmation, send_verification_email, signup
 
 User = get_user_model()
@@ -198,7 +199,13 @@ def _campus_context(user):
     if active is not None:
         ctx["campus_expires_at"] = active.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
     elif user.email_verified_at is not None:
-        ctx["last_verification"] = user.campus_verifications.order_by("-verified_at").first()
+        last = user.campus_verifications.order_by("-verified_at").first()
+        if last is not None:
+            # The sweeper closes lapsed rows by setting revoked_at with reason EXPIRED, so
+            # revoked_at alone does not mean a moderator revoked it.
+            ctx["last_ended_expired"] = last.revoked_at is None or last.revoke_reason == RevokeReason.EXPIRED
+            ctx["last_expired_on"] = last.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
+        ctx["last_verification"] = last
         ctx["presence_code"] = desk.presence_code(user.pk, now)
     return ctx
 
@@ -232,6 +239,10 @@ def desk_view(request):
             # Name the student only; never echo the registration number or the card name.
             messages.success(request, f"{cd['username']} is now campus-verified.")
             return redirect("accounts:desk")
+    if form.is_bound:
+        # Never echo the presence code back: it rotates every 10 minutes, so a stale one is useless.
+        form.data = form.data.copy()
+        form.data["code"] = ""
     return render(request, "accounts/desk.html", {"form": form})
 
 

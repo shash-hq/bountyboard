@@ -11,10 +11,10 @@
       You are <strong>not campus-verified</strong>. You can browse, post one open bounty and pitch, but you
       can't accept or be accepted (that is when contact details are shared) until you are verified.
     </p>
-    {% if last_verification and last_verification.revoked_at %}
-      <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification was revoked.</p>
+    {% if last_verification and last_ended_expired %}
+      <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification expired on {{ last_expired_on|date:"M d, Y" }}.</p>
     {% elif last_verification %}
-      <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification expired on {{ last_verification.verified_at|date:"M d, Y" }} (it lasts a year).</p>
+      <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification was revoked.</p>
     {% endif %}
     {% if presence_code %}
       <p style="margin: 0 0 var(--spacing-2) 0;">
@@ -23,7 +23,7 @@
       <p style="font-family: var(--font-display); font-size: var(--text-3xl); letter-spacing: 0.2em; margin: 0 0 var(--spacing-2) 0;" aria-label="Presence code">{{ presence_code }}</p>
       <p style="margin: 0; font-size: var(--text-xs);">
         The code changes every 10 minutes. <a href="{% url 'me' %}">Reload this page</a> for a fresh one.
-        Or sign up with your <code>@lpu.co.in</code> address to verify by email.
+        You can also verify with a campus email address.
       </p>
     {% endif %}
   {% endif %}
