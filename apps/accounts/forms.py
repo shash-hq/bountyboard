@@ -1,26 +1,11 @@
 from django import forms
-from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
+from .services import username_available
+
 User = get_user_model()
-
-
-def email_domain_allowed(email: str, allowed_domain: str) -> bool:
-    """True if the email's domain is exactly ``allowed_domain`` or a subdomain of it.
-
-    A bare ``endswith(domain)`` is wrong: "notiitb.ac.in" ends with "iitb.ac.in".
-    Requiring the "." boundary means only "iitb.ac.in" and "x.iitb.ac.in" pass.
-    Both sides are stripped and lowercased (DNS names are case-insensitive). A leading "@" or
-    "." on the configured value (".iitb.ac.in" is a common way to say "this domain and its
-    subdomains") is ignored.
-    """
-    allowed = allowed_domain.strip().lower().lstrip("@.")
-    domain = email.strip().lower().rpartition("@")[2]
-    if not allowed or not domain:
-        return False
-    return domain == allowed or domain.endswith("." + allowed)
 
 
 class SignupForm(forms.Form):
@@ -58,27 +43,20 @@ class SignupForm(forms.Form):
     )
 
     def clean_username(self):
-        username = self.cleaned_data["username"].strip()
-        if User.objects.filter(username__iexact=username).exists():
-            raise ValidationError("This username is already taken. Pick a different handle.")
-        return username
+        return self.cleaned_data["username"].strip()
 
     def clean_email(self):
-        email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
-            raise ValidationError("An account with this email already exists.")
-
-        # Optional ALLOWED_EMAIL_DOMAIN restriction
-        allowed_domain = getattr(settings, "ALLOWED_EMAIL_DOMAIN", "").strip()
-        if allowed_domain:
-            if not email_domain_allowed(email, allowed_domain):
-                raise ValidationError(
-                    f"Only email addresses ending with '@{allowed_domain}' are permitted on this campus board."
-                )
-        return email
+        # No uniqueness check here on purpose: telling a stranger "this address already has an
+        # account" is an enumeration oracle. services.signup() handles an address that is in use.
+        # Signup is open to any domain. Being a campus student is established separately, at email
+        # confirmation (campus.verify_campus_email) or in person; the domain gates nothing here.
+        return self.cleaned_data["email"].strip().lower()
 
     def clean(self):
         cleaned_data = super().clean()
+        username, email = cleaned_data.get("username"), cleaned_data.get("email")
+        if username and email and not username_available(username, email):
+            self.add_error("username", "This username is already taken. Pick a different handle.")
         p1 = cleaned_data.get("password")
         p2 = cleaned_data.get("password_confirm")
 
@@ -90,7 +68,48 @@ class SignupForm(forms.Form):
         return cleaned_data
 
 
+class ConfirmEmailForm(forms.Form):
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={
+            "class": "input-text",
+            "placeholder": "The password you chose at signup",
+            "autocomplete": "current-password",
+        }),
+    )
+
+    def __init__(self, *args, ask_reg_no=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if ask_reg_no:
+            self.fields["reg_no"] = RegNoField()
+
+
+class RegNoField(forms.CharField):
+    """Registration number, collected only on the campus-email path."""
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            label="Registration number",
+            max_length=32,
+            widget=forms.TextInput(attrs={
+                "class": "input-text", "placeholder": "e.g. 12345678",
+                "inputmode": "numeric", "autocomplete": "off",
+            }),
+            **kwargs,
+        )
+
+
+class ResendVerificationForm(forms.Form):
+    email = forms.EmailField(
+        widget=forms.EmailInput(attrs={
+            "class": "input-text",
+            "placeholder": "the email you signed up with",
+            "autocomplete": "email",
+        }),
+    )
+
+
 class LoginForm(forms.Form):
+    unverified = False  # set by clean() so the template can offer a "resend link" action
     username_or_email = forms.CharField(
         label="Username or Email",
         widget=forms.TextInput(attrs={
@@ -126,6 +145,11 @@ class LoginForm(forms.Form):
                 raise ValidationError("Invalid username/email or password.")
             if not user.is_active:
                 raise ValidationError("This account has been deactivated.")
+            # Checked only AFTER the password is right, so "unverified" is never revealed to
+            # someone who does not know the password.
+            if user.email_verified_at is None:
+                self.unverified = True
+                raise ValidationError("Confirm your email first: use the link we sent you.")
             cleaned_data["user"] = user
 
         return cleaned_data

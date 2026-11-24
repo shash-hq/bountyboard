@@ -18,6 +18,8 @@ VALID_ENV = {
     "ALLOWED_HOSTS": "bountyboard.example.com",
     "CSRF_TRUSTED_ORIGINS": "https://bountyboard.example.com",
     "SITE_URL": "https://bountyboard.example.com",
+    "REG_NO_HMAC_KEY": "r" * 16 + "Qw3-" * 8,  # 48 chars, distinct from SECRET_KEY
+    "CARD_NAME_KEYS": "Zm9vYmFyLWNhcmQtbmFtZS1rZXktMzItYnl0ZXMhISE=",  # 32 bytes, url-safe b64
 }
 SETTINGS_MODULES = ("config.settings.base", "config.settings.dev", "config.settings.prod")
 
@@ -78,6 +80,27 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
                 with self.assertRaisesMessage(ImproperlyConfigured, expected):
                     self.load(**{name: value})
 
+    def test_hmac_key_must_be_long_and_distinct_from_secret_key(self):
+        for label, key in {"short": "short", "same as SECRET_KEY": GOOD_KEY}.items():
+            with self.subTest(label):
+                with self.assertRaisesMessage(ImproperlyConfigured, "REG_NO_HMAC_KEY"):
+                    self.load(REG_NO_HMAC_KEY=key)
+
+    def test_card_name_keys_must_be_valid_unique_and_not_the_dev_key(self):
+        good = VALID_ENV["CARD_NAME_KEYS"]
+        dev = "Jcr23Z9b0ORKdGnQQibh8ZEurkoxmpn_qvy-kcKfmss="
+        cases = {"not a fernet key": "nope", "repeated": f"{good},{good}", "dev key": f"{good},{dev}"}
+        for label, value in cases.items():
+            with self.subTest(label):
+                with self.assertRaisesMessage(ImproperlyConfigured, "CARD_NAME_KEYS"):
+                    self.load(CARD_NAME_KEYS=value)
+
+    def test_card_name_keys_accept_a_rotation_list(self):
+        from cryptography.fernet import Fernet
+
+        new, old = Fernet.generate_key().decode(), VALID_ENV["CARD_NAME_KEYS"]
+        self.assertEqual(self.load(CARD_NAME_KEYS=f"{new},{old}").CARD_NAME_KEYS, [new, old])
+
     def test_dev_settings_still_boot_without_any_environment(self):
         s = self.load("config.settings.dev")
         self.assertTrue(s.DEBUG)
@@ -111,7 +134,7 @@ class EntryPointDefaultsTests(SimpleTestCase):
 
 
 class AuthRedirectSettingsTests(SimpleTestCase):
-    def test_login_and_logout_redirect_settings_resolve_to_the_board(self):
+    def test_login_redirect_is_the_board_and_logout_redirect_is_the_landing_page(self):
         # "pages:board" did not exist, so reverse() raised NoReverseMatch at login/logout time.
-        self.assertEqual(reverse(settings.LOGIN_REDIRECT_URL), "/")
+        self.assertEqual(reverse(settings.LOGIN_REDIRECT_URL), "/board/")
         self.assertEqual(reverse(settings.LOGOUT_REDIRECT_URL), "/")

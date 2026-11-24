@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Resend Confirmation | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card">
+    <h1 class="page-title">RESEND CONFIRMATION</h1>
+    <p>Enter the email you signed up with. We'll send a new link and the old one will stop working.</p>
+    <form method="post" action="{% url 'accounts:resend_verification' %}" novalidate>
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label" for="id_email">Email</label>
+        {{ form.email }}
+        {% for error in form.email.errors %}
+          <div class="field-error">{{ error }}</div>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">SEND NEW LINK &rarr;</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

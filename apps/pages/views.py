@@ -1,45 +1,68 @@
 from django.conf import settings
+from django.contrib.auth.decorators import login_not_required
 from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from config.http import safe_referer
 
 
+@login_not_required
 @require_GET
 def healthz(request):
     """Health check endpoint for deployment monitoring."""
     return HttpResponse("OK", content_type="text/plain; charset=utf-8")
 
 
+@login_not_required
 @require_GET
 def robots_txt(request):
     """Serve robots.txt directly."""
     lines = [
+        # Public pages only: the landing page, about, terms, privacy and guidelines. Everything
+        # else needs a login, so there is nothing for a crawler to index there.
         "User-agent: *",
-        "Allow: /",
         "Disallow: /admin/",
+        "Disallow: /accounts/",
+        "Disallow: /board/",
+        "Disallow: /bounties/",
         "Disallow: /claims/",
+        "Disallow: /internal/",
+        "Disallow: /me/",
         f"Sitemap: {request.build_absolute_uri('/sitemap.xml')}",
     ]
     return HttpResponse("\n".join(lines), content_type="text/plain")
 
 
+@login_not_required
+@require_GET
+def landing(request):
+    """Public front door. Signed-in users go straight to the board."""
+    if request.user.is_authenticated:
+        return redirect("board")
+    return render(request, "pages/landing.html")
+
+
+@login_not_required
 @require_GET
 def about(request):
     return render(request, "pages/about.html")
 
 
+@login_not_required
 @require_GET
 def terms(request):
     return render(request, "pages/terms.html")
 
 
+@login_not_required
 @require_GET
 def privacy(request):
     return render(request, "pages/privacy.html")
 
 
+@login_not_required
 @require_GET
 def guidelines(request):
     return render(request, "pages/guidelines.html")
@@ -53,13 +76,14 @@ def styleguide(request):
     return render(request, "pages/styleguide.html")
 
 
+@login_not_required
 @require_POST
 def set_layout(request):
     """Sets bb_layout cookie (grid | list) and redirects back."""
     layout = request.POST.get("layout", "grid")
     if layout not in ("grid", "list"):
         layout = "grid"
-    response = HttpResponseRedirect(safe_referer(request, fallback="/"))
+    response = HttpResponseRedirect(safe_referer(request, fallback=reverse("landing")))
     # 30 day max_age
     response.set_cookie("bb_layout", layout, max_age=60 * 60 * 24 * 30, samesite="Lax")
     return response

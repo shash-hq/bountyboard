@@ -72,7 +72,12 @@ class Command(BaseCommand):
         for username, email, full_name, role in users_data:
             user, created = User.objects.get_or_create(
                 username=username,
-                defaults={"email": email, "first_name": full_name.split()[0], "last_name": full_name.split()[1]},
+                defaults={
+                    "email": email,
+                    "first_name": full_name.split()[0],
+                    "last_name": full_name.split()[1],
+                    "email_verified_at": timezone.now(),  # demo accounts skip the email step
+                },
             )
             if created:  # an existing seed user keeps whatever password it has
                 user.set_password(password)

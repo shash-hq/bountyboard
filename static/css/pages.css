@@ -384,3 +384,63 @@
   background-color: var(--ink);
   color: var(--white);
 }
+
+/* Login: resend-confirmation hint */
+.login-resend {
+  margin-top: var(--spacing-4);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.login-resend a {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* Public landing page */
+.landing-hero {
+  max-width: 800px;
+  margin: var(--spacing-8) auto var(--spacing-6);
+}
+.landing-title {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  line-height: 1.1;
+  margin: var(--spacing-4) 0;
+}
+.landing-lead {
+  font-size: var(--text-lg);
+  line-height: 1.6;
+}
+.landing-actions {
+  display: flex;
+  gap: var(--spacing-4);
+  flex-wrap: wrap;
+  margin: var(--spacing-6) 0 var(--spacing-3);
+}
+.landing-note {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.landing-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-4);
+  max-width: 800px;
+  margin: 0 auto var(--spacing-6);
+}
+.landing-step-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  margin: 0 0 var(--spacing-2);
+}
+.landing-more {
+  text-align: center;
+  font-weight: 700;
+  margin-bottom: var(--spacing-8);
+}
+
+/* Confirm-email page asides */
+.confirm-aside {
+  margin-top: var(--spacing-4);
+  font-size: var(--text-sm);
+}

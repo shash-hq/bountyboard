@@ -13,5 +13,4 @@ def global_ui_context(request):
         "bb_layout": layout,
         "can_moderate": can_moderate(request.user) if hasattr(request, "user") else False,
         "DEBUG": settings.DEBUG,
-        "ALLOWED_EMAIL_DOMAIN": getattr(settings, "ALLOWED_EMAIL_DOMAIN", ""),
     }

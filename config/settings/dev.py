@@ -5,6 +5,9 @@ DEBUG = True
 # Throwaway development-only defaults. prod.py rejects this key.
 SECRET_KEY = SECRET_KEY or "insecure-default-django-key-for-dev-builds-only-1234567890"  # noqa: F405
 SITE_URL = SITE_URL or "http://localhost:8000"  # noqa: F405
+# Throwaway development-only keys. Never used in production (prod.py requires its own).
+REG_NO_HMAC_KEY = REG_NO_HMAC_KEY or "dev-only-reg-no-hmac-key-not-for-production-0123456789"  # noqa: F405
+CARD_NAME_KEYS = CARD_NAME_KEYS or ["Jcr23Z9b0ORKdGnQQibh8ZEurkoxmpn_qvy-kcKfmss="]  # noqa: F405
 
 # Add django-debug-toolbar
 try:

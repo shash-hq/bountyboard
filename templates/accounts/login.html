@@ -46,6 +46,11 @@
       </button>
     </form>
 
+    <div class="login-resend">
+      {% if form.unverified %}<strong>Link lost or expired?</strong>{% else %}Didn't get your confirmation email?{% endif %}
+      <a href="{% url 'accounts:resend_verification' %}">Resend it</a>.
+    </div>
+
     <div style="margin-top: var(--spacing-6); text-align: center; border-top: 2px dashed var(--ink); padding-top: var(--spacing-4); font-size: var(--text-sm);">
       New to Bounty Board? <a href="{% url 'accounts:signup' %}" style="font-weight: 800; color: var(--ink);">Sign up in 30 seconds</a>.
     </div>

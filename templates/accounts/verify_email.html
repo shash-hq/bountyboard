@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Email | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card brutal-card--mint">
+    <span class="stamp-badge stamp-open">ONE LAST STEP</span>
+    <h1 class="page-title">CONFIRM YOUR EMAIL</h1>
+    <p>You're confirming <strong>{{ email }}</strong>. Enter the password you chose at signup to activate the account.</p>
+
+    {% if error %}<div class="field-error">{{ error }}</div>{% endif %}
+
+    <form method="post" action="{% url 'accounts:verify_email' uid token %}">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label" for="id_password">Password</label>
+        {{ form.password }}
+      </div>
+      {% if form.reg_no %}
+      <div class="form-group">
+        <label class="form-label" for="id_reg_no">Registration number</label>
+        {{ form.reg_no }}
+        {% for e in form.reg_no.errors %}<div class="field-error">{{ e }}</div>{% endfor %}
+        <p class="confirm-aside">Your campus email verifies you as an LPU student. We store only a keyed hash of this number and its last 4 digits, so one student can't hold several verified accounts.</p>
+      </div>
+      {% endif %}
+      <button type="submit" class="btn btn-primary btn-block">CONFIRM &amp; LOG IN &rarr;</button>
+    </form>
+
+    <p class="confirm-aside">Didn't sign up? Ignore this page and the email; nothing happens.</p>
+    <p class="confirm-aside">Forgot your password? <a href="{% url 'accounts:signup' %}?email={{ email|urlencode }}">Sign up again with this address</a> to start over.</p>
+  </div>
+</div>
+{% endblock %}

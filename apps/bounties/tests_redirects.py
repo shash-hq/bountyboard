@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from apps.accounts.testing import create_verified_user
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
@@ -15,8 +16,8 @@ EVIL = "https://evil.example/bounties/mod/"
 
 class RefererRedirectTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create(username="rposter", email="rp@example.org")
-        self.mod = User.objects.create(username="rmod", email="rm@example.org")
+        self.poster = create_verified_user(username="rposter", email="rp@example.org")
+        self.mod = create_verified_user(username="rmod", email="rm@example.org")
         self.mod.user_permissions.add(Permission.objects.get(codename="moderate"))
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Redirect test bounty", description="x" * 30,

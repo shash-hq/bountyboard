@@ -30,6 +30,11 @@ services:
         sync: false
       - key: SITE_URL # e.g. https://bountyboard.onrender.com
         sync: false
+      # Campus verification. Set these once by hand in the dashboard; never commit or back them up.
+      - key: REG_NO_HMAC_KEY # >= 32 random chars, distinct from SECRET_KEY
+        sync: false
+      - key: CARD_NAME_KEYS # comma-separated Fernet keys, first one encrypts
+        sync: false
       # Supabase Supavisor SESSION-mode pooler (port 5432, IPv4); the direct host is IPv6-only.
       - key: DATABASE_URL
         sync: false

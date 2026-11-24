@@ -68,8 +68,8 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
 - Constraints:
   - Partial unique `(user) WHERE revoked_at IS NULL`: at most one active verification per user.
   - CheckConstraints, per method:
-    - `IN_PERSON` ⇒ `identity`, `verified_by` and `card_name_enc` are all NOT NULL.
-    - `CAMPUS_EMAIL` ⇒ `verified_email` NOT NULL and `identity` NULL.
+    - `IN_PERSON` ⇒ `verified_by` and `card_name_enc` are NOT NULL. (`identity` may be NULL: a reg-no collision verifies the user unbound, see "Deviations from this plan".)
+    - `CAMPUS_EMAIL` ⇒ `verified_email` NOT NULL, and `verified_by` and `identity` NULL.
   - CheckConstraint: `revoked_at IS NULL ⇔ revoke_reason IS NULL`.
 - Permission: none on this model. `accounts.verify_student` lives permanently on `User.Meta.permissions` (added in PR 1) and is not moved here.
 - **Card name:**
@@ -91,7 +91,9 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
 ## Services (`apps/accounts/services.py`; lock rule: users locked in ascending id order, always after any bounty/claim locks)
 
 - **`send_verification_email(user)` / `confirm_email(token)`**
-  - The GET page shows a "Confirm" button and only the POST mutates. Gmail/Outlook link scanners prefetch GETs, so a GET must not consume the token.
+  - The link is `/accounts/verify-email/<uid>/<token>/`. The token hash is bound to the user id and password hash, so replacing the account or changing the password kills older links.
+  - The GET page shows the address and a password field and never mutates (Gmail/Outlook link scanners prefetch GETs). Only the POST mutates, and only with the right account password: the link alone proves mailbox access, not that the account is the reader's (pre-hijacking). On success the session is rotated and the user is logged in. The POST shares login's throttle (same per-IP bucket, same per-account failure budget).
+  - **`signup(username, email, password)`**: under a per-address advisory lock, an address held by an *unverified* account has that account deleted and replaced; a *verified* one is never touched and its owner gets a "you already have an account" email, with a response identical to a new address (no enumeration). Signup and resend share one per-address email budget. Stale unverified accounts (older than the link lifetime, no live link, no owned rows, no role) are purged lazily on collision and by `purge_unverified_accounts`.
   - On confirm: set `email_verified_at`. If the domain is in `ALLOWED_CAMPUS_DOMAINS` (exact domain match; trimmed and lowercased; default `["lpu.co.in"]`):
     - The confirm form also requires the reg no, unless the user already holds a binding.
     - Create a `CAMPUS_EMAIL` verification and close any prior unrevoked row with `SUPERSEDED`.
@@ -204,7 +206,7 @@ python manage.py makemigrations --check --dry-run --settings=config.settings.dev
 coverage run --branch manage.py test --settings=config.settings.dev && coverage report --omit=...
 ```
 
-Manual run-through via `runserver` and the console email backend. Until PR 4 removes the signup gate, only `lpu.co.in` addresses can sign up (`ALLOWED_EMAIL_DOMAIN=lpu.co.in`), so the steps use those:
+Manual run-through via `runserver` and the console email backend (signup is open to any domain from PR 4; `lpu.co.in` is just the default `ALLOWED_CAMPUS_DOMAINS`):
 1. Sign up with an `@lpu.co.in` address, then confirm the email.
 2. Post a bounty; a second post is refused (cap 1).
 3. Sign up a second user with `@lpu.co.in`; they become LPU-verified on confirm (PR 4 on).
@@ -213,10 +215,20 @@ Manual run-through via `runserver` and the console email backend. Until PR 4 rem
 6. The poster accepts; both parties see each other's contact.
 7. A moderator revokes with `POLICY_VIOLATION`; the counterparty sees the notification and cancels.
 
-**PR 4 run-through addition** (the gate is gone): sign up with a gmail address and confirm the email. They become `EMAIL_VERIFIED` only: they can post (cap 1) and pitch, but cannot accept or be accepted.
+**PR 4 run-through addition:** sign up with a gmail address and confirm the email. They become `EMAIL_VERIFIED` only: they can post (cap 1) and pitch, but cannot accept or be accepted.
+
+## Deviations from this plan (found while building PR 4)
+
+1. **`IN_PERSON` does not require `identity`.** The original check contradicted "a collision never blocks": the colliding user is verified with `identity=NULL`, so the constraint would have rejected the insert and lost the verification. `CAMPUS_EMAIL` rows also forbid `verified_by`.
+2. **`verified_by` is `PROTECT`**, not `SET_NULL` (which would violate the `IN_PERSON` check): a verifier with history cannot be deleted.
+3. **A card that disagrees with an already-bound number** (a different `reg_no_hmac` for the same user) was unspecified. The binding is left untouched, the verification still goes through, and an `IdentityReview` is opened for a moderator.
+4. **`ALLOWED_CAMPUS_DOMAINS` landed one commit before the gate removal**, because the confirm path needs it. Open signup never existed without the campus check.
+5. **Accounts errors** live in `apps/accounts/errors.py` (shaped like PR 2's `DomainError`) until PR 2 merges; then re-parent them. The moderator check is a local helper with `can_moderate`'s rule, to be swapped likewise.
+6. **Account deletion is anonymize-in-place, not hard delete** (follow-up PR `pr4b-deletion-binding`; resolves open question 3). `Bounty.poster` and `Claim.claimant` are CASCADE, so a hard delete would erase counterparties' finished history and, for an accepted claimant, violate the I2 check constraint. The row is scrubbed and deactivated instead (`deleted_at`, placeholder username/email, unusable password, no groups, card name and campus-email snapshot wiped, claim contact cleared). The `StudentIdentity` binding and revocation history stay, so deletion can never free a registration number or erase a ban, and no nullable-user migration is needed. CLAIMED work (as poster or accepted claimant) blocks deletion; OPEN bounties and PENDING claims are cancelled/withdrawn through the bounties services. The interim `ensure_self_deletion_allowed` guard from PR 4 is removed because it no longer protects anything. There is still no "delete my account" page.
+7. **No admin actions yet.** The campus models are view-only in the admin; moderator actions arrive as views in PR 7.
 
 ## Open questions (my default, if you don't say otherwise)
 
 1. **Renewal for `IN_PERSON` users.** They have no campus inbox, so the "one-click re-verify" can't prove anything. My default: their reminder email asks them to visit a desk, or to add and verify an `@lpu.co.in` address. A one-click "I'm still on campus" self-attestation is **not** offered, because it would make the TTL meaningless.
 2. **Remaining Sybil gap.** A self-declared reg no on the email path is unverified. Someone could type another student's number first, and the real owner then lands in review instead of being blocked. That is the intended trade-off. It goes in the "not covered" list: a review backlog during launch week could delay legitimate students' bindings, though not their verification.
-3. **Account deletion vs. the binding.** The card name goes with the account (as you asked). The default for the `StudentIdentity` row is to delete it too, *unless* the user's last revocation was `POLICY_VIOLATION`, in which case it stays with `user=NULL` so a banned student can't come back by deleting and re-signing up.
+3. **Account deletion vs. the binding.** Resolved: see deviation 6.
