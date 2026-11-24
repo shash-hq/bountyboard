@@ -20,6 +20,7 @@ from django_ratelimit.exceptions import Ratelimited
 from apps.bounties.models import Bounty, Claim
 from apps.bounties.exceptions import DomainError
 from apps.bounties.policies import can_moderate, can_verify_students, is_campus_verified, open_bounty_cap
+from apps.bounties import inbox
 from apps.bounties.services import count_live_open_bounties
 from . import campus, desk
 from .forms import ConfirmEmailForm, ContactHandleForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
@@ -279,6 +280,8 @@ def me_view(request):
         "open_bounty_cap": open_bounty_cap(user),
         "is_campus_verified": campus_verified,
         "is_moderator": can_moderate(user),
+        "notifications": inbox.recent_for(user),
+        "unread_notifications": inbox.unread_count(user),
         **_campus_context(user),
     }
     return render(request, "accounts/me.html", context)
@@ -294,6 +297,14 @@ def contact_handle_view(request):
         messages.success(request, "Contact handle saved." if request.user.contact_handle else "Contact handle cleared.")
         return redirect("me")
     return render(request, "accounts/contact_handle.html", {"form": form})
+
+
+@login_required
+@require_POST
+def notifications_read_view(request):
+    """Mark the user's own notifications read. Plain POST + PRG; scoped to request.user inside inbox."""
+    inbox.mark_all_read(request.user)
+    return redirect("me")
 
 
 @method_decorator(ratelimit(key="ip", rate=rate("password_reset_per_ip"), method="POST", block=True), name="dispatch")
