@@ -109,16 +109,6 @@ class Bounty(models.Model):
         if self.deadline and self.pk is None and self.status == BountyStatus.OPEN and self.deadline <= timezone.now():
             raise ValidationError({"deadline": "Deadline must be in the future."})
 
-        # Max 5 OPEN bounties per user rule (enforced on new bounties)
-        if self.pk is None and self.poster_id and self.status == BountyStatus.OPEN:
-            open_count = Bounty.objects.filter(
-                poster=self.poster, status=BountyStatus.OPEN, is_hidden=False
-            ).count()
-            if open_count >= 5:
-                raise ValidationError(
-                    "You already have 5 active OPEN bounties. Complete or cancel one before posting more."
-                )
-
     def save(self, *args, **kwargs):
         if not self.slug:
             base_slug = slugify(self.title)[:80] or "bounty"

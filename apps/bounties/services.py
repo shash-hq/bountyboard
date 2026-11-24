@@ -1,9 +1,10 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from .exceptions import DomainError, InvalidTransition, NotPermitted  # noqa: F401 (re-exported)
+from .exceptions import DomainError, InvalidTransition, LimitReached, NotPermitted  # noqa: F401 (re-exported)
 from .models import Bounty, BountyStatus, Claim, ClaimStatus, Report
-from .policies import can_moderate
+from .policies import can_moderate, is_campus_verified, open_bounty_cap
 from .notifications import (
     send_claim_accepted_notification,
     send_claim_rejected_notification,
@@ -43,20 +44,38 @@ def _bounty_id_of_claim(claim_id: int) -> int:
 EDITABLE_FIELDS = ("title", "description", "category", "reward", "deadline")
 
 
-def create_bounty(poster, **fields) -> Bounty:
-    """Create a bounty, serializing the "max 5 OPEN per user" check.
+def count_live_open_bounties(user) -> int:
+    """The user's OPEN bounties, hidden ones included (invariant I4): hiding a listing must not be a way
+    to post past the cap."""
+    return Bounty.objects.filter(poster=user, status=BountyStatus.OPEN).count()
 
-    Bounty.clean counts the poster's open bounties and then the row is inserted: two
-    concurrent creates can both count 4 and both insert (write skew -> 6 open). Locking the
-    poster's USER row first makes concurrent creates by the same poster take turns, so each
-    count sees the previous create's committed row. (No bounty exists yet, so there is no
-    bounty lock to take; the user lock is last in the bounty -> claims -> user order.)
+
+def open_limit_message(user, cap: int) -> str:
+    noun = "bounty" if cap == 1 else "bounties"
+    msg = f"You already have {cap} open {noun}. Complete or cancel one before posting more."
+    if not is_campus_verified(user):
+        msg += f" Campus-verified students can have up to {settings.OPEN_BOUNTY_CAP_CAMPUS_VERIFIED} open at once."
+    return msg
+
+
+def create_bounty(poster, **fields) -> Bounty:
+    """Create a bounty, serializing the open-bounty cap (invariant I4).
+
+    The cap depends on the poster's tier (1 email-verified, 5 campus-verified) and the count must
+    include hidden bounties. Counting and then inserting is a write-skew race: two concurrent creates
+    can both count 4 and both insert. Locking the poster's USER row first makes concurrent creates by
+    the same poster take turns, so each count sees the previous create's committed row. The same row
+    is locked by revoke_verification, so the tier cannot change between reading the cap and the insert.
+    (No bounty exists yet, so there is no bounty lock; the user lock is last in bounty -> claims -> user.)
     """
     User = get_user_model()
     with transaction.atomic():
-        User.objects.select_for_update().get(pk=poster.pk)
+        locked = User.objects.select_for_update().get(pk=poster.pk)
+        cap = open_bounty_cap(locked)
+        if count_live_open_bounties(locked) >= cap:
+            raise LimitReached(open_limit_message(locked, cap))
         bounty = Bounty(poster=poster, **fields)
-        bounty.save()  # full_clean() runs the cap check under the user lock
+        bounty.save()  # full_clean() validates the fields; the cap is enforced above, not in clean()
     return bounty
 
 

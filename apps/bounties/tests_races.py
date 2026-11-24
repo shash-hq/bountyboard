@@ -12,7 +12,7 @@ from datetime import timedelta
 from itertools import count
 
 from django.contrib.auth import get_user_model
-from apps.accounts.testing import create_verified_user
+from apps.accounts.testing import campus_verify, create_verified_user
 from django.core.exceptions import ValidationError
 from django.db import connection, connections, transaction
 from django.test import TestCase, TransactionTestCase
@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from apps.bounties import services
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
-from apps.bounties.exceptions import InvalidTransition, NotPermitted
+from apps.bounties.exceptions import InvalidTransition, LimitReached, NotPermitted
 
 User = get_user_model()
 ITERATIONS = 15  # a race is probabilistic per attempt; repeat to make a regression likely to show
@@ -285,7 +285,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
     """I4: at most 5 OPEN bounties per user, even under concurrent creates."""
 
     def poster_with_open(self, n):
-        poster = make_user("capposter")
+        poster = campus_verify(make_user("capposter"))  # cap 5 needs a campus verification
         for _ in range(n):
             make_bounty(poster)
         return poster
@@ -302,7 +302,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
             )
             self.assertEqual([o[0] for o in sorted(out)], ["err", "ok"], out)
             self.assertIsInstance(
-                next(o[1] for o in out if o[0] == "err"), ValidationError)
+                next(o[1] for o in out if o[0] == "err"), LimitReached)
             self.assertEqual(self.open_count(poster), 5)
 
     def test_create_blocked_by_user_lock_cannot_exceed_cap(self):
@@ -319,14 +319,14 @@ class CreateBountyCapRaceTests(TransactionTestCase):
         worker.join(timeout=30)
         self.assertFalse(worker.is_alive(), "worker hung (deadlock?)")
         self.assertIn("err", outcome, outcome)
-        self.assertIsInstance(outcome["err"], ValidationError)
+        self.assertIsInstance(outcome["err"], LimitReached)
         self.assertEqual(self.open_count(poster), 5)
 
 
 @unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class EditBountyRaceTests(TransactionTestCase):
     def setUp(self):
-        self.poster = make_user("editposter")
+        self.poster = campus_verify(make_user("editposter"))
         self.claimant = make_user("editclaimant")
         self.bounty = make_bounty(self.poster)
         self.claim = make_claim(self.bounty, self.claimant)
@@ -366,7 +366,7 @@ class EditBountyRaceTests(TransactionTestCase):
 
 class BountyEditServiceTests(TestCase):
     def setUp(self):
-        self.poster = make_user("svcposter")
+        self.poster = campus_verify(make_user("svcposter"))
         self.other = make_user("svcother")
         self.bounty = make_bounty(self.poster)
 
@@ -405,5 +405,5 @@ class BountyEditServiceTests(TestCase):
         for _ in range(3):  # setUp already made one: 4 open, so exactly one more is allowed
             make_bounty(self.poster)
         services.create_bounty(self.poster, **bounty_fields())
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(LimitReached):
             services.create_bounty(self.poster, **bounty_fields())

@@ -20,14 +20,17 @@ from .policies import (
     can_view_claims,
     can_view_hidden_bounty,
     can_view_poster_contact,
+    open_bounty_cap,
 )
 from .services import (
     accept_claim,
     cancel_bounty,
+    count_live_open_bounties,
     create_bounty,
     create_claim,
     hide_bounty,
     mark_bounty_done,
+    open_limit_message,
     reject_claim,
     resolve_report,
     update_bounty_details,
@@ -161,16 +164,12 @@ def bounty_detail_view(request, pk, slug):
 @require_http_methods(["GET", "POST"])
 def bounty_create_view(request):
     """Post a new bounty. Enforces maximum 5 OPEN bounties per user."""
-    # Check current open count
-    open_count = Bounty.objects.filter(
-        poster=request.user, status=BountyStatus.OPEN, is_hidden=False
-    ).count()
-    if open_count >= 5:
-        messages.error(
-            request,
-            "You already have 5 active OPEN bounties. Complete or cancel one before posting more.",
-        )
-        return redirect("/me/")
+    # Early, non-authoritative check so a user at the cap sees why before filling in the form.
+    # create_bounty re-checks under the user lock; this is only for the message.
+    cap = open_bounty_cap(request.user)
+    if count_live_open_bounties(request.user) >= cap:
+        messages.error(request, open_limit_message(request.user, cap))
+        return redirect("me")
 
     if request.method == "POST":
         form = BountyForm(request.POST)
@@ -179,6 +178,8 @@ def bounty_create_view(request):
                 bounty = create_bounty(request.user, **form.cleaned_data)
                 messages.success(request, f"Bounty '{bounty.title}' is now live on the board!")
                 return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+            except DomainError as e:
+                form.add_error(None, e.messages[0])
             except ValidationError as e:
                 for field, errs in e.message_dict.items():
                     for err in errs:

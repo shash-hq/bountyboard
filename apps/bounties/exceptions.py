@@ -31,3 +31,7 @@ class NotPermitted(DomainError, PermissionDenied):
     Also a PermissionDenied so that, if a view forgets to catch it, Django answers 403
     instead of a 500.
     """
+
+
+class LimitReached(DomainError):
+    """A per-user cap (e.g. live OPEN bounties) is already full."""

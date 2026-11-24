@@ -119,30 +119,6 @@ class BountyModelAndTagTests(TestCase):
         with self.assertRaises(ValidationError):
             b_past_deadline.save()
 
-    def test_max_five_open_bounties_rule(self):
-        """Verify user cannot have more than 5 OPEN bounties simultaneously."""
-        future = timezone.now() + timedelta(days=5)
-
-        for i in range(5):
-            Bounty.objects.create(
-                poster=self.user,
-                title=f"Valid Test Bounty Number {i+1}",
-                description="Valid long description exceeding twenty characters for testing.",
-                reward=100 + i * 10,
-                deadline=future,
-            )
-
-        # 6th should fail validation
-        b6 = Bounty(
-            poster=self.user,
-            title="The Sixth Bounty Limit Test",
-            description="Valid long description exceeding twenty characters for testing.",
-            reward=200,
-            deadline=future,
-        )
-        with self.assertRaises(ValidationError):
-            b6.save()
-
 
 class BountyViewAndFilterTests(TestCase):
     def setUp(self):
