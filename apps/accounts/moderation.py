@@ -7,9 +7,12 @@ Lock order (CLAUDE.local.md): bounty -> claims -> user; users ascending by id. `
 sees the verification already revoked and fails, or the revoke waits until the accept commits.
 """
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
-from apps.bounties.policies import can_moderate
+from apps.bounties import inbox
+from apps.bounties.models import Bounty, BountyStatus, NotificationKind
+from apps.bounties.policies import CANCELLABLE_REVOKE_REASONS, can_moderate
 
 from .errors import InvalidState, NotPermitted
 from .identity import decrypt_card_name
@@ -43,8 +46,15 @@ def revoke_verification(moderator_id, user_id, reason, note="", now=None):
     """Revoke the user's active campus verification. The identity binding is kept, so a revoked
     user cannot simply re-verify the same card on a new account (see ``release_identity``).
 
-    Existing CLAIMED bounties and contact details already shown are left alone; the counterparty
-    notification and the cancel path are PR 7.
+    Existing CLAIMED bounties and contact details already shown are left alone. For an invalid
+    verification or a policy violation the counterparty of each such bounty gets an in-app
+    notification (same transaction, so it exists iff the revoke committed) and may then cancel via
+    ``services.cancel_after_counterparty_revocation``. LEFT_CAMPUS notifies nobody.
+
+    Lock order: this takes only user locks and reads bounties without locking them, so it never
+    holds a user lock while waiting for a bounty lock (bounty -> claims -> user stays intact). A
+    concurrent accept needs the subject's user lock, so it either commits first (and is found by the
+    query below) or waits and then fails the verification check.
     """
     if reason not in MODERATOR_REASONS:
         raise InvalidState("Choose a valid revocation reason.")
@@ -62,7 +72,27 @@ def revoke_verification(moderator_id, user_id, reason, note="", now=None):
             actor=moderator, subject=subject, action="REVOKED", reason=reason, note=note,
             verification=verification, created_at=now,
         )
+        if reason in CANCELLABLE_REVOKE_REASONS:
+            _notify_counterparties(subject, verification)
     return verification
+
+
+def _notify_counterparties(subject, verification):
+    """One notification per CLAIMED bounty the subject is a party to, keyed by (revocation, bounty)."""
+    claimed = (
+        Bounty.objects.filter(status=BountyStatus.CLAIMED)
+        .filter(Q(poster=subject) | Q(accepted_claim__claimant=subject))
+        .select_related("poster", "accepted_claim__claimant")
+        .order_by("pk")
+    )
+    for bounty in claimed:
+        other = bounty.accepted_claim.claimant if bounty.poster_id == subject.pk else bounty.poster
+        inbox.notify(
+            other, NotificationKind.COUNTERPARTY_REVOKED,
+            f"{subject.username}'s campus verification was revoked, so '{bounty.title}' can no longer "
+            "rely on it. You can cancel this bounty from its page.",
+            idempotency_key=f"revoked:{verification.pk}:{bounty.pk}", bounty=bounty,
+        )
 
 
 def release_identity(moderator_id, user_id, note, now=None):

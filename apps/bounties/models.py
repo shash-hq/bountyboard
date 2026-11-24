@@ -30,6 +30,7 @@ class ClaimStatus(models.TextChoices):
     ACCEPTED = "ACCEPTED", "ACCEPTED"
     REJECTED = "REJECTED", "REJECTED"
     WITHDRAWN = "WITHDRAWN", "WITHDRAWN"
+    CANCELLED = "CANCELLED", "CANCELLED"  # an ACCEPTED claim ended by the counterparty-revocation cancel
 
 
 class ReportReason(models.TextChoices):
@@ -223,6 +224,7 @@ class Report(models.Model):
 
 class NotificationKind(models.TextChoices):
     COUNTERPARTY_REVOKED = "COUNTERPARTY_REVOKED", "Counterparty lost campus verification"
+    COUNTERPARTY_CANCELLED = "COUNTERPARTY_CANCELLED", "Counterparty cancelled after a verification revocation"
 
 
 class Notification(models.Model):

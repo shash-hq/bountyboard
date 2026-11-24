@@ -17,6 +17,7 @@ from .notifications import send_claim_received_notification
 from .exceptions import DomainError
 from .policies import (
     can_moderate,
+    can_cancel_after_counterparty_revocation,
     can_view_contact,
     is_campus_verified,
     can_view_claims,
@@ -25,6 +26,7 @@ from .policies import (
 )
 from .services import (
     accept_claim,
+    cancel_after_counterparty_revocation,
     cancel_bounty,
     count_live_open_bounties,
     create_bounty,
@@ -163,6 +165,7 @@ def bounty_detail_view(request, pk, slug):
         "is_poster": request.user == bounty.poster,
         "poster_verified": is_campus_verified(request.user) if request.user == bounty.poster else False,
         "show_poster_contact": can_view_contact(request.user, bounty.poster, bounty),
+        "can_cancel_revoked": can_cancel_after_counterparty_revocation(request.user, bounty),
     }
     return render(request, "bounties/detail.html", context)
 
@@ -259,6 +262,19 @@ def bounty_cancel_view(request, pk):
 
     bounty = get_object_or_404(Bounty, pk=pk)
     return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+
+
+@require_POST
+@login_required
+def bounty_cancel_revoked_view(request, pk):
+    """A party cancels a CLAIMED bounty after the other's verification was revoked."""
+    bounty = get_object_or_404(Bounty, pk=pk)
+    try:
+        cancel_after_counterparty_revocation(pk, request.user)
+        messages.info(request, f"Bounty '{bounty.title}' has been cancelled.")
+    except (DomainError, ValidationError) as e:
+        messages.error(request, _error_text(e))
+    return redirect(bounty)
 
 
 @require_POST

@@ -77,6 +77,16 @@
       {% endif %}
     </div>
 
+    {% if can_cancel_revoked %}
+      <div class="brutal-card brutal-card--yellow">
+        <p>The other person's campus verification was revoked. You can cancel this bounty; nothing is recorded against you.</p>
+        <form action="{% url 'bounties:cancel_revoked' bounty.pk %}" method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-danger">CANCEL THIS BOUNTY</button>
+        </form>
+      </div>
+    {% endif %}
+
     <!-- CLAIMS SECTION -->
     {% if is_poster or perms.bounties.moderate %}
       <div class="claims-section">
@@ -203,6 +213,8 @@
             </p>
           {% elif user_claim.status == 'WITHDRAWN' %}
             <span class="stamp-badge stamp-expired">CLAIM WITHDRAWN</span>
+          {% elif user_claim.status == 'CANCELLED' %}
+            <span class="stamp-badge stamp-cancelled">CLAIM CANCELLED</span>
           {% endif %}
         </div>
       </div>
