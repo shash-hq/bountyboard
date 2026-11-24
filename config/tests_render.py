@@ -56,3 +56,20 @@ class HealthzTests(TestCase):
         with self.assertNumQueries(0):
             r = self.client.get("/healthz")
         self.assertEqual(r.status_code, 200)
+
+
+class SingleWorkerTests(SimpleTestCase):
+    """Rate-limit counters (django-ratelimit on LocMemCache) live in one process. With N workers
+    every budget silently becomes N times larger, including the per-verifier desk limit that
+    stops presence-code guessing. So every way of starting gunicorn must use exactly one worker
+    (threads share the counters, so they are fine). Move to a shared cache before raising this."""
+
+    def workers(self, text):
+        return re.findall(r"--workers[ =](\d+)", text)
+
+    def test_render_blueprint_runs_one_worker(self):
+        self.assertEqual(self.workers(BLUEPRINT), ["1"])
+
+    def test_procfile_runs_one_worker(self):
+        procfile = (ROOT / "Procfile").read_text()
+        self.assertEqual(self.workers(procfile), ["1"])
