@@ -9,12 +9,13 @@ from django.contrib.messages import get_messages
 from django.core import mail
 from django.core.cache import cache
 from django.core.management import call_command
-from django.db import IntegrityError, connection
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.bounties.models import Bounty
+from apps.bounties.tests_races import wait_until_a_lock_request_is_waiting
 
 from . import services
 from .services import confirm_email, peek_confirmation
@@ -282,3 +283,49 @@ class SignupRaceTests(TransactionTestCase):
                                side_effect=IntegrityError('duplicate key value violates unique constraint "accounts_user_username_ci_uniq"')):
             with self.assertRaises(services.UsernameTaken):
                 services.signup("dupe", "dupe@example.org", "Race-pass-12345")
+
+
+class SignupAdvisoryLockTests(TransactionTestCase):
+    """The unique constraint and retry loop make the *outcome* of a signup race correct even with no
+    lock, so SignupRaceTests would pass if the lock were deleted (it did: the lock was dead code,
+    ``if False:``, from the commit that added it). These tests hold the lock ourselves and assert the
+    service really waits on it."""
+
+    def hold_lock(self, key_email):
+        with connection.cursor() as cur:
+            cur.execute(services.EMAIL_LOCK_SQL, [key_email])
+
+    def run_signup(self, name, email):
+        outcome = {}
+
+        def target():
+            try:
+                services.signup(name, email, "Race-pass-12345")
+            except BaseException as exc:  # noqa: BLE001: the test reports any failure
+                outcome["err"] = exc
+            finally:
+                connection.close()
+
+        t = threading.Thread(target=target)
+        return t, outcome
+
+    def test_signup_waits_for_the_per_address_lock_then_completes(self):
+        with transaction.atomic():
+            self.hold_lock("race@example.org")
+            t, outcome = self.run_signup("racer", "Race@Example.org")  # mixed case: same lock
+            t.start()
+            wait_until_a_lock_request_is_waiting()
+            self.assertFalse(User.objects.filter(username="racer").exists())
+        t.join(timeout=15)
+        self.assertEqual(outcome, {})
+        self.assertEqual(User.objects.get(username="racer").email, "race@example.org")
+
+    def test_the_lock_is_per_address_not_global(self):
+        with transaction.atomic():
+            self.hold_lock("held@example.org")
+            t, outcome = self.run_signup("other", "other@example.org")
+            t.start()
+            t.join(timeout=15)  # must finish while we still hold the other address
+            self.assertFalse(t.is_alive())
+        self.assertEqual(outcome, {})
+        self.assertTrue(User.objects.filter(username="other").exists())
