@@ -9,6 +9,8 @@ sees the verification already revoked and fails, or the revoke waits until the a
 from django.db import transaction
 from django.utils import timezone
 
+from apps.bounties.policies import can_moderate
+
 from .errors import InvalidState, NotPermitted
 from .identity import decrypt_card_name
 from .models import AuditEvent, CampusVerification, RevokeReason, StudentIdentity, User, VerificationMethod
@@ -18,17 +20,12 @@ MODERATOR_REASONS = (RevokeReason.LEFT_CAMPUS, RevokeReason.VERIFICATION_INVALID
 MAX_NOTE = 500
 
 
-def _can_moderate(user) -> bool:
-    # Same rule as bounties.policies.can_moderate (PR 2); swap to it once that merges.
-    return user.is_active and user.has_perm("bounties.moderate")
-
-
 def _lock(actor_id, subject_id):
     """Lock actor and subject together in ascending id order. Returns (actor, subject)."""
     rows = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={actor_id, subject_id}).order_by("pk")}
     actor, subject = rows.get(actor_id), rows.get(subject_id)
     # Permission comes from the freshly locked row, so a just-removed Moderators membership applies.
-    if actor is None or not _can_moderate(actor):
+    if actor is None or not can_moderate(actor):
         raise NotPermitted("You are not allowed to moderate.")
     if subject is None:
         raise InvalidState("No such user.")
@@ -102,7 +99,7 @@ def reveal_card_name(actor_id, user_id, reason="", now=None) -> str:
         actor, subject = _lock_any(actor_id, user_id)
         is_owner = actor.pk == subject.pk
         if not is_owner:
-            if not _can_moderate(actor):
+            if not can_moderate(actor):
                 raise NotPermitted("You are not allowed to view this.")
             if not reason:
                 raise InvalidState("Say why you need the card name.")

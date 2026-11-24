@@ -26,6 +26,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.bounties import services as bounty_services
+from apps.bounties.exceptions import InvalidTransition
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
 
 from .errors import DeletionBlocked, InvalidState
@@ -60,12 +61,12 @@ def delete_account(user_id, now=None) -> None:
     for bounty in Bounty.objects.filter(poster_id=user_id, status=BountyStatus.OPEN):
         try:
             bounty_services.cancel_bounty(bounty.pk, user)
-        except bounty_services.InvalidTransition:
+        except InvalidTransition:
             pass  # it moved on since we listed it; the re-check below decides
     for claim in Claim.objects.filter(claimant_id=user_id, status=ClaimStatus.PENDING):
         try:
             bounty_services.withdraw_claim(claim.pk, user)
-        except bounty_services.InvalidTransition:
+        except InvalidTransition:
             pass
 
     # 3. Under the user lock: re-check (a claim may have been accepted, or a bounty created, since
