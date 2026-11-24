@@ -14,12 +14,14 @@
           </h1>
           {% if is_moderator %}
             <span class="stamp-badge stamp-claimed">MODERATOR</span>
+          {% elif is_campus_verified %}
+            <span class="stamp-badge stamp-open">CAMPUS VERIFIED</span>
           {% else %}
-            <span class="stamp-badge stamp-open">CAMPUS STUDENT</span>
+            <span class="stamp-badge stamp-claimed">EMAIL VERIFIED</span>
           {% endif %}
         </div>
         <p style="margin: 0; font-size: var(--text-sm); color: var(--muted-ink);">
-          Email: <strong>{{ user.email }}</strong> &bull; Active Open Bounties: <strong>{{ open_bounties_count }}/5</strong>
+          Email: <strong>{{ user.email }}</strong> &bull; Open Bounties: <strong>{{ open_bounties_count }}/{{ open_bounty_cap }}</strong>
         </p>
       </div>
 
@@ -27,6 +29,7 @@
         {% if is_moderator %}
           <a href="{% url 'bounties:mod_queue' %}" class="btn btn-secondary">MODERATOR QUEUE</a>
         {% endif %}
+        <a href="{% url 'accounts:contact_handle' %}" class="btn btn-secondary">CONTACT HANDLE</a>
         <a href="/bounties/new/" class="btn btn-primary">+ POST NEW BOUNTY</a>
       </div>
     </div>
@@ -82,7 +85,7 @@
                   <strong>Deadline:</strong> {{ b.deadline|date:"M d, Y H:i" }} &bull;
                   <strong>Total Claims:</strong> {{ b.claims.count }}
                   {% if b.accepted_claim %}
-                    &bull; <strong>Accepted:</strong> {{ b.accepted_claim.claimant.username }} ({{ b.accepted_claim.contact }})
+                    &bull; <strong>Accepted:</strong> {{ b.accepted_claim.claimant.username }} (contact details are on the bounty page)
                   {% endif %}
                 </div>
 
@@ -160,13 +163,13 @@
 
               {% if c.status == 'ACCEPTED' %}
                 <div style="background-color: var(--mint); border: 2px solid var(--ink); padding: var(--spacing-3); font-weight: 700; font-size: var(--text-sm); margin-bottom: var(--spacing-2);">
-                  🎉 YOUR CLAIM WAS ACCEPTED! Poster contact email: <u>{{ c.bounty.poster.email }}</u>. Coordinate directly and settle offline!
+                  🎉 YOUR CLAIM WAS ACCEPTED! The poster's contact details are on the bounty page. Coordinate directly and settle offline!
                 </div>
               {% endif %}
 
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-3); padding-top: var(--spacing-2); font-size: var(--text-xs);">
                 <div>
-                  Submitted on {{ c.created_at|date:"M d, Y H:i" }} &bull; Contact handle provided: {{ c.contact }}
+                  Submitted on {{ c.created_at|date:"M d, Y H:i" }}
                 </div>
 
                 <div>

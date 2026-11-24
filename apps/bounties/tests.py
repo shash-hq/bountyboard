@@ -119,30 +119,6 @@ class BountyModelAndTagTests(TestCase):
         with self.assertRaises(ValidationError):
             b_past_deadline.save()
 
-    def test_max_five_open_bounties_rule(self):
-        """Verify user cannot have more than 5 OPEN bounties simultaneously."""
-        future = timezone.now() + timedelta(days=5)
-
-        for i in range(5):
-            Bounty.objects.create(
-                poster=self.user,
-                title=f"Valid Test Bounty Number {i+1}",
-                description="Valid long description exceeding twenty characters for testing.",
-                reward=100 + i * 10,
-                deadline=future,
-            )
-
-        # 6th should fail validation
-        b6 = Bounty(
-            poster=self.user,
-            title="The Sixth Bounty Limit Test",
-            description="Valid long description exceeding twenty characters for testing.",
-            reward=200,
-            deadline=future,
-        )
-        with self.assertRaises(ValidationError):
-            b6.save()
-
 
 class BountyViewAndFilterTests(TestCase):
     def setUp(self):
@@ -232,13 +208,13 @@ class BountyViewAndFilterTests(TestCase):
 class ClaimsLifecycleAndPermissionDenialTests(TestCase):
     def setUp(self):
         self.poster = create_verified_user(
-            username="poster", email="poster@campus.edu.in", password="Password123!"
+            username="poster", email="poster@campus.edu.in", password="Password123!", campus=True
         )
         self.claimant1 = create_verified_user(
-            username="claimant1", email="claimant1@campus.edu.in", password="Password123!"
+            username="claimant1", email="claimant1@campus.edu.in", password="Password123!", campus=True
         )
         self.claimant2 = create_verified_user(
-            username="claimant2", email="claimant2@campus.edu.in", password="Password123!"
+            username="claimant2", email="claimant2@campus.edu.in", password="Password123!", campus=True
         )
         self.bounty = Bounty.objects.create(
             poster=self.poster,
@@ -256,7 +232,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.poster,
             message="Trying to claim my own task.",
-            contact="WhatsApp 123",
         )
         with self.assertRaises(ValidationError):
             claim.save()
@@ -265,7 +240,7 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         self.client.force_login(self.poster)
         res = self.client.post(
             reverse("bounties:claim", kwargs={"pk": self.bounty.pk}),
-            {"message": "I will solve my own bounty", "contact": "+91 9999999999"},
+            {"message": "I will solve my own bounty"},
             follow=True,
         )
         self.assertEqual(self.bounty.claims.count(), 0)
@@ -279,7 +254,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="Valid pitch for a cancelled bounty.",
-            contact="WhatsApp 123",
         )
         with self.assertRaises(ValidationError):
             claim.save()
@@ -290,14 +264,12 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First valid proposal for this bounty.",
-            contact="WhatsApp 123",
             status=ClaimStatus.PENDING,
         )
         duplicate = Claim(
             bounty=self.bounty,
             claimant=self.claimant1,
             message="Second proposal for the same task.",
-            contact="WhatsApp 123",
             status=ClaimStatus.PENDING,
         )
         with self.assertRaises(ValidationError):
@@ -312,13 +284,11 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
         )
         c2 = Claim.objects.create(
             bounty=self.bounty,
             claimant=self.claimant2,
             message="Second proposal from claimant 2.",
-            contact="WhatsApp: +91 9222222222",
         )
 
         mail.outbox.clear()
@@ -343,7 +313,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
         )
         with self.assertRaises(NotPermitted):
             accept_claim(c1.id, self.claimant2)
@@ -354,7 +323,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
         )
         with self.assertRaises(NotPermitted):
             reject_claim(c1.id, self.claimant2)
@@ -365,7 +333,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
         )
         withdrawn = withdraw_claim(c1.id, self.claimant1)
         self.assertEqual(withdrawn.status, ClaimStatus.WITHDRAWN)
@@ -376,7 +343,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
         )
         with self.assertRaises(NotPermitted):
             withdraw_claim(c1.id, self.claimant2)
@@ -387,7 +353,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
             status=ClaimStatus.ACCEPTED,
         )
         with self.assertRaises(InvalidTransition):
@@ -404,7 +369,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
             bounty=self.bounty,
             claimant=self.claimant1,
             message="First proposal from claimant 1.",
-            contact="WhatsApp: +91 9111111111",
         )
         accept_claim(c1.id, self.poster)
 
@@ -432,15 +396,15 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
 
     def test_contact_visibility_rules(self):
         """
-        Rule: Claim contact visible ONLY to poster.
-        After accept, claimant sees poster's email.
+        Rule: nothing before acceptance; after it, only the two parties see each other's contact.
         """
         c1 = Claim.objects.create(
             bounty=self.bounty,
             claimant=self.claimant1,
             message="Pitch with secret contact info.",
-            contact="+91 9999988888",
         )
+        # The contact is the profile's handle now, not something typed with the claim.
+        type(self.claimant1).objects.filter(pk=self.claimant1.pk).update(contact_handle="+91 9999988888")
 
         # Anonymous / other student view: does NOT see contact
         self.client.force_login(self.claimant2)
@@ -487,13 +451,13 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
     """
     def setUp(self):
         self.poster = create_verified_user(
-            username="race_poster", email="race_poster@campus.edu.in", password="Password123!"
+            username="race_poster", email="race_poster@campus.edu.in", password="Password123!", campus=True
         )
         self.c1_user = create_verified_user(
-            username="race_c1", email="race_c1@campus.edu.in", password="Password123!"
+            username="race_c1", email="race_c1@campus.edu.in", password="Password123!", campus=True
         )
         self.c2_user = create_verified_user(
-            username="race_c2", email="race_c2@campus.edu.in", password="Password123!"
+            username="race_c2", email="race_c2@campus.edu.in", password="Password123!", campus=True
         )
         self.bounty = Bounty.objects.create(
             poster=self.poster,
@@ -508,13 +472,11 @@ class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
             bounty=self.bounty,
             claimant=self.c1_user,
             message="Proposal 1 for race condition check.",
-            contact="contact1",
         )
         self.claim2 = Claim.objects.create(
             bounty=self.bounty,
             claimant=self.c2_user,
             message="Proposal 2 for race condition check.",
-            contact="contact2",
         )
 
     def test_double_accept_race_prevented(self):

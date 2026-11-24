@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.accounts import campus
 from config.http import safe_referer
 
 from .forms import BountyForm, ClaimForm, ReportForm
@@ -16,18 +17,21 @@ from .notifications import send_claim_received_notification
 from .exceptions import DomainError
 from .policies import (
     can_moderate,
-    can_view_claim_contact,
+    can_view_contact,
+    is_campus_verified,
     can_view_claims,
     can_view_hidden_bounty,
-    can_view_poster_contact,
+    open_bounty_cap,
 )
 from .services import (
     accept_claim,
     cancel_bounty,
+    count_live_open_bounties,
     create_bounty,
     create_claim,
     hide_bounty,
     mark_bounty_done,
+    open_limit_message,
     reject_claim,
     resolve_report,
     update_bounty_details,
@@ -137,8 +141,14 @@ def bounty_detail_view(request, pk, slug):
     claims = []
     if can_view_claims(request.user, bounty):
         claims = list(bounty.claims.select_related("claimant", "bounty").order_by("-created_at"))
+        # One query for who among the claimants is campus-verified (display only: accept_claim
+        # re-checks under the locks).
+        verified_ids = set(
+            campus.active_verifications().filter(user_id__in=[c.claimant_id for c in claims]).values_list("user_id", flat=True)
+        )
         for c in claims:
-            c.contact_visible = can_view_claim_contact(request.user, c)
+            c.contact_visible = can_view_contact(request.user, c.claimant, bounty)
+            c.claimant_verified = c.claimant_id in verified_ids
 
     claim_form = ClaimForm() if bounty.can_claim(request.user) else None
     report_form = ReportForm() if request.user.is_authenticated and request.user != bounty.poster else None
@@ -151,7 +161,8 @@ def bounty_detail_view(request, pk, slug):
         "report_form": report_form,
         "can_edit": bounty.can_edit(request.user),
         "is_poster": request.user == bounty.poster,
-        "show_poster_contact": can_view_poster_contact(request.user, bounty),
+        "poster_verified": is_campus_verified(request.user) if request.user == bounty.poster else False,
+        "show_poster_contact": can_view_contact(request.user, bounty.poster, bounty),
     }
     return render(request, "bounties/detail.html", context)
 
@@ -161,16 +172,12 @@ def bounty_detail_view(request, pk, slug):
 @require_http_methods(["GET", "POST"])
 def bounty_create_view(request):
     """Post a new bounty. Enforces maximum 5 OPEN bounties per user."""
-    # Check current open count
-    open_count = Bounty.objects.filter(
-        poster=request.user, status=BountyStatus.OPEN, is_hidden=False
-    ).count()
-    if open_count >= 5:
-        messages.error(
-            request,
-            "You already have 5 active OPEN bounties. Complete or cancel one before posting more.",
-        )
-        return redirect("/me/")
+    # Early, non-authoritative check so a user at the cap sees why before filling in the form.
+    # create_bounty re-checks under the user lock; this is only for the message.
+    cap = open_bounty_cap(request.user)
+    if count_live_open_bounties(request.user) >= cap:
+        messages.error(request, open_limit_message(request.user, cap))
+        return redirect("me")
 
     if request.method == "POST":
         form = BountyForm(request.POST)
@@ -179,6 +186,8 @@ def bounty_create_view(request):
                 bounty = create_bounty(request.user, **form.cleaned_data)
                 messages.success(request, f"Bounty '{bounty.title}' is now live on the board!")
                 return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
+            except DomainError as e:
+                form.add_error(None, e.messages[0])
             except ValidationError as e:
                 for field, errs in e.message_dict.items():
                     for err in errs:
@@ -270,12 +279,11 @@ def bounty_claim_view(request, pk):
                 bounty.pk,
                 request.user,
                 message=form.cleaned_data["message"],
-                contact=form.cleaned_data["contact"],
             )
             send_claim_received_notification(claim)
             messages.success(
                 request,
-                f"Your claim on '{bounty.title}' was submitted! The poster will review your contact handle.",
+                f"Your claim on '{bounty.title}' was submitted! The poster will review it. If they accept, you'll both see each other's contact details.",
             )
         except (DomainError, ValidationError) as e:
             messages.error(request, _error_text(e))
@@ -296,7 +304,7 @@ def claim_accept_view(request, pk):
         accept_claim(claim.pk, request.user)
         messages.success(
             request,
-            f"Accepted claim by {claim.claimant.username}! You can now coordinate via their contact handle: {claim.contact}",
+            f"Accepted claim by {claim.claimant.username}! Their contact details are now shown below.",
         )
     except (DomainError, ValidationError) as e:
         messages.error(request, _error_text(e))

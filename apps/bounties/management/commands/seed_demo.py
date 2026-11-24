@@ -6,6 +6,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from apps.accounts import campus
+from apps.accounts.models import CampusVerification
 from apps.bounties.models import Bounty, BountyStatus, Category, Claim, ClaimStatus
 from apps.bounties.services import accept_claim
 
@@ -85,6 +87,15 @@ class Command(BaseCommand):
                 created_count += 1
             if username == "campus_mod":
                 user.groups.add(mod_group)  # moderator by group permission; never is_staff
+            else:
+                # The demo accepts claims between students, which now requires both parties to be
+                # campus-verified (I9). Demo students get a real verification row, like a student who
+                # confirmed a campus address.
+                if not campus.is_campus_verified(user):
+                    campus.supersede_active(user, timezone.now())  # a lapsed row would block the insert
+                    CampusVerification.objects.create(
+                        user=user, method="CAMPUS_EMAIL", verified_email=user.email, verified_at=timezone.now()
+                    )
             users[username] = user
 
         # Replace only what this command created before: bounties posted by the seed users.
@@ -425,14 +436,12 @@ class Command(BaseCommand):
             bounty=b1,
             claimant=users["priya_cs"],
             message="I built a custom BLE telemetry bridge last semester using ESP-IDF. I can fix this in under an hour tonight.",
-            contact="WhatsApp: +91 98450 11223",
             status=ClaimStatus.PENDING,
         )
         c2 = Claim.objects.create(
             bounty=b1,
             claimant=users["kabir_ai"],
             message="I have an nRF Sniffer dongle with me in Hostel 4. We can capture Wireshark BLE packets together and diagnose.",
-            contact="WhatsApp: +91 97410 44556",
             status=ClaimStatus.PENDING,
         )
 
@@ -442,7 +451,6 @@ class Command(BaseCommand):
             bounty=b_claimed,
             claimant=users["arjun_ece"],
             message="Control systems is my core elective. I have the complete Lagrangian derivation in my notebook already.",
-            contact="WhatsApp: +91 91234 56789",
             status=ClaimStatus.PENDING,
         )
         accept_claim(c_claimed.id, users["rohan_mech"])
@@ -453,7 +461,6 @@ class Command(BaseCommand):
             bounty=b_done,
             claimant=users["priya_cs"],
             message="Delivered Figma vector exports and high-res PDF. Work completed.",
-            contact="priya.cs@campus.edu.in",
             status=ClaimStatus.PENDING,
         )
         accept_claim(c_done.id, users["ananya_design"])

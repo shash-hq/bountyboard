@@ -171,3 +171,23 @@ class DeskVerifyForm(forms.Form):
         label="Name as printed on the card", max_length=100,
         widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
     )
+
+
+class ContactHandleForm(forms.ModelForm):
+    """The one optional contact detail beyond email. Single line, no control characters."""
+
+    class Meta:
+        model = User
+        fields = ["contact_handle"]
+        widgets = {
+            "contact_handle": forms.TextInput(attrs={
+                "class": "input-text", "placeholder": "WhatsApp number or handle (optional)",
+                "autocomplete": "tel", "maxlength": "100",
+            }),
+        }
+
+    def clean_contact_handle(self):
+        value = " ".join((self.cleaned_data.get("contact_handle") or "").split())
+        if any(ord(ch) < 32 for ch in value):
+            raise ValidationError("Contact handle can't contain control characters.")
+        return value

@@ -26,8 +26,8 @@ def bounty(poster, status=BountyStatus.OPEN, title="Some task"):
     )
 
 
-def claim(b, claimant, status=ClaimStatus.PENDING, contact="+91 99999 11111"):
-    return Claim.objects.create(bounty=b, claimant=claimant, message="m" * 12, contact=contact, status=status)
+def claim(b, claimant, status=ClaimStatus.PENDING):
+    return Claim.objects.create(bounty=b, claimant=claimant, message="m" * 12, status=status)
 
 
 def accepted(b, claimant, bounty_status=BountyStatus.CLAIMED):
@@ -55,7 +55,9 @@ class Base(TestCase):
         self.vol.groups.add(Group.objects.get(name="Verifiers"))
         self.mod = create_verified_user("mod", "mod@gmail.com", PW)
         self.mod.groups.add(Group.objects.get(name="Moderators"))
-        self.stu = create_verified_user("stu", "stu.private@gmail.com", PW, first_name="Asha", last_name="Verma")
+        self.stu = create_verified_user(
+            "stu", "stu.private@gmail.com", PW, first_name="Asha", last_name="Verma", contact_handle="+91 98765 43210"
+        )
         self.other = create_verified_user("other", "other@gmail.com", PW)
 
     def desk_verify(self, who=None, name="Asha Verma", reg=REG):
@@ -73,7 +75,7 @@ class AnonymizeTests(Base):
         self.assertEqual(u.deleted_at, self.now)
         self.assertFalse(u.is_active)
         self.assertTrue(u.username.startswith("deleted-") and u.email.endswith("@deleted.invalid"))
-        self.assertEqual((u.first_name, u.last_name), ("", ""))
+        self.assertEqual((u.first_name, u.last_name, u.contact_handle), ("", "", ""))
         self.assertFalse(u.has_usable_password())
         self.assertNotEqual(u.password, old_hash)
         self.assertFalse(u.groups.exists() or u.user_permissions.exists() or u.is_staff or u.is_superuser)
@@ -94,16 +96,14 @@ class AnonymizeTests(Base):
             self.assertIsNone(r.card_name_enc)
             self.assertFalse(r.verified_email)
 
-    def test_claim_contact_is_scrubbed(self):
-        b = bounty(self.other)
-        c = claim(b, self.stu)
-        c2 = claim(bounty(self.other, title="Other task"), create_verified_user("z", "z@gmail.com", PW), contact="keep")
+    def test_only_the_deleted_users_pending_claims_are_withdrawn(self):
+        c = claim(bounty(self.other), self.stu)
+        c2 = claim(bounty(self.other, title="Other task"), create_verified_user("z", "z@gmail.com", PW))
         deletion.delete_account(self.stu.pk)
         c.refresh_from_db()
-        self.assertEqual(c.contact, "")
-        self.assertEqual(c.status, ClaimStatus.WITHDRAWN)
         c2.refresh_from_db()
-        self.assertEqual(c2.contact, "keep")  # someone else's claim is untouched
+        self.assertEqual(c.status, ClaimStatus.WITHDRAWN)
+        self.assertEqual(c2.status, ClaimStatus.PENDING)  # someone else's claim is untouched
 
     def test_open_bounties_are_cancelled_and_pending_claims_withdrawn_through_the_services(self):
         mine = bounty(self.stu)

@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from apps.bounties import services
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
-from apps.bounties.exceptions import InvalidTransition, NotPermitted
+from apps.bounties.exceptions import InvalidTransition, LimitReached, NotPermitted
 
 User = get_user_model()
 ITERATIONS = 15  # a race is probabilistic per attempt; repeat to make a regression likely to show
@@ -82,7 +82,7 @@ def in_worker(fn):
 
 def make_user(prefix):
     n = next(_seq)
-    return create_verified_user(username=f"{prefix}{n}", email=f"{prefix}{n}@example.com")
+    return create_verified_user(username=f"{prefix}{n}", email=f"{prefix}{n}@example.com", campus=True)
 
 
 def make_bounty(poster):
@@ -96,7 +96,7 @@ def make_bounty(poster):
 
 
 def make_claim(bounty, claimant):
-    return Claim.objects.create(bounty=bounty, claimant=claimant, message="m" * 12, contact="c")
+    return Claim.objects.create(bounty=bounty, claimant=claimant, message="m" * 12)
 
 
 @unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
@@ -169,7 +169,7 @@ class TransitionRaceTests(TransactionTestCase):
 
         def late_claim():
             try:
-                outcome["ok"] = services.create_claim(bounty.id, late, "m" * 12, "c2")
+                outcome["ok"] = services.create_claim(bounty.id, late, "m" * 12)
             except Exception as e:  # noqa: BLE001
                 outcome["err"] = e
             finally:
@@ -197,8 +197,8 @@ class TransitionRaceTests(TransactionTestCase):
             _, bounty = self.fresh()
             claimant = make_user("dbl")
             out = run_together(
-                lambda: services.create_claim(bounty.id, claimant, "m" * 12, "c"),
-                lambda: services.create_claim(bounty.id, claimant, "m" * 12, "c"),
+                lambda: services.create_claim(bounty.id, claimant, "m" * 12),
+                lambda: services.create_claim(bounty.id, claimant, "m" * 12),
             )
             self.assert_one_winner(out)  # no IntegrityError / 500
             self.assertEqual(Claim.objects.filter(bounty=bounty, claimant=claimant).count(), 1)
@@ -262,7 +262,7 @@ class FriendlyErrorViewTests(TestCase):
     def test_duplicate_claim_post_is_a_flash_not_a_500(self):
         self.client.force_login(self.c1)
         r = self.client.post(
-            reverse("bounties:claim", args=[self.bounty.pk]), {"message": "m" * 12, "contact": "c"}, follow=True
+            reverse("bounties:claim", args=[self.bounty.pk]), {"message": "m" * 12}, follow=True
         )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(Claim.objects.filter(bounty=self.bounty, claimant=self.c1).count(), 1)
@@ -285,7 +285,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
     """I4: at most 5 OPEN bounties per user, even under concurrent creates."""
 
     def poster_with_open(self, n):
-        poster = make_user("capposter")
+        poster = make_user("capposter")  # cap 5 needs a campus verification
         for _ in range(n):
             make_bounty(poster)
         return poster
@@ -302,7 +302,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
             )
             self.assertEqual([o[0] for o in sorted(out)], ["err", "ok"], out)
             self.assertIsInstance(
-                next(o[1] for o in out if o[0] == "err"), ValidationError)
+                next(o[1] for o in out if o[0] == "err"), LimitReached)
             self.assertEqual(self.open_count(poster), 5)
 
     def test_create_blocked_by_user_lock_cannot_exceed_cap(self):
@@ -319,7 +319,7 @@ class CreateBountyCapRaceTests(TransactionTestCase):
         worker.join(timeout=30)
         self.assertFalse(worker.is_alive(), "worker hung (deadlock?)")
         self.assertIn("err", outcome, outcome)
-        self.assertIsInstance(outcome["err"], ValidationError)
+        self.assertIsInstance(outcome["err"], LimitReached)
         self.assertEqual(self.open_count(poster), 5)
 
 
@@ -405,5 +405,5 @@ class BountyEditServiceTests(TestCase):
         for _ in range(3):  # setUp already made one: 4 open, so exactly one more is allowed
             make_bounty(self.poster)
         services.create_bounty(self.poster, **bounty_fields())
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(LimitReached):
             services.create_bounty(self.poster, **bounty_fields())

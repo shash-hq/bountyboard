@@ -1,9 +1,11 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 
-from .exceptions import DomainError, InvalidTransition, NotPermitted  # noqa: F401 (re-exported)
+from .exceptions import DomainError, InvalidTransition, LimitReached, NotPermitted  # noqa: F401 (re-exported)
 from .models import Bounty, BountyStatus, Claim, ClaimStatus, Report
-from .policies import can_moderate
+from .policies import can_moderate, is_campus_verified, open_bounty_cap
 from .notifications import (
     send_claim_accepted_notification,
     send_claim_rejected_notification,
@@ -43,20 +45,38 @@ def _bounty_id_of_claim(claim_id: int) -> int:
 EDITABLE_FIELDS = ("title", "description", "category", "reward", "deadline")
 
 
-def create_bounty(poster, **fields) -> Bounty:
-    """Create a bounty, serializing the "max 5 OPEN per user" check.
+def count_live_open_bounties(user) -> int:
+    """The user's OPEN bounties, hidden ones included (invariant I4): hiding a listing must not be a way
+    to post past the cap."""
+    return Bounty.objects.filter(poster=user, status=BountyStatus.OPEN).count()
 
-    Bounty.clean counts the poster's open bounties and then the row is inserted: two
-    concurrent creates can both count 4 and both insert (write skew -> 6 open). Locking the
-    poster's USER row first makes concurrent creates by the same poster take turns, so each
-    count sees the previous create's committed row. (No bounty exists yet, so there is no
-    bounty lock to take; the user lock is last in the bounty -> claims -> user order.)
+
+def open_limit_message(user, cap: int) -> str:
+    noun = "bounty" if cap == 1 else "bounties"
+    msg = f"You already have {cap} open {noun}. Complete or cancel one before posting more."
+    if not is_campus_verified(user):
+        msg += f" Campus-verified students can have up to {settings.OPEN_BOUNTY_CAP_CAMPUS_VERIFIED} open at once."
+    return msg
+
+
+def create_bounty(poster, **fields) -> Bounty:
+    """Create a bounty, serializing the open-bounty cap (invariant I4).
+
+    The cap depends on the poster's tier (1 email-verified, 5 campus-verified) and the count must
+    include hidden bounties. Counting and then inserting is a write-skew race: two concurrent creates
+    can both count 4 and both insert. Locking the poster's USER row first makes concurrent creates by
+    the same poster take turns, so each count sees the previous create's committed row. The same row
+    is locked by revoke_verification, so the tier cannot change between reading the cap and the insert.
+    (No bounty exists yet, so there is no bounty lock; the user lock is last in bounty -> claims -> user.)
     """
     User = get_user_model()
     with transaction.atomic():
-        User.objects.select_for_update().get(pk=poster.pk)
+        locked = User.objects.select_for_update().get(pk=poster.pk)
+        cap = open_bounty_cap(locked)
+        if count_live_open_bounties(locked) >= cap:
+            raise LimitReached(open_limit_message(locked, cap))
         bounty = Bounty(poster=poster, **fields)
-        bounty.save()  # full_clean() runs the cap check under the user lock
+        bounty.save()  # full_clean() validates the fields; the cap is enforced above, not in clean()
     return bounty
 
 
@@ -85,7 +105,7 @@ def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
     return bounty
 
 
-def create_claim(bounty_id: int, claimant, message: str, contact: str) -> Claim:
+def create_claim(bounty_id: int, claimant, message: str) -> Claim:
     """Submit a claim. Locks the bounty so a claim cannot land on a bounty that was
     accepted/cancelled concurrently, and so a double-submit is detected, not a 500."""
     with transaction.atomic():
@@ -98,15 +118,40 @@ def create_claim(bounty_id: int, claimant, message: str, contact: str) -> Claim:
         if Claim.objects.filter(bounty=bounty, claimant=claimant).exists():
             raise InvalidTransition("You have already submitted a claim on this bounty.")
 
-        claim = Claim(bounty=bounty, claimant=claimant, message=message, contact=contact)
+        claim = Claim(bounty=bounty, claimant=claimant, message=message)
         claim.save()
     return claim
+
+
+def _require_both_campus_verified(poster_id: int, claimant_id: int) -> None:
+    """Invariant I9: contact is exchanged only between two campus-verified users.
+
+    Takes both USER row locks in ascending id order (the last step of bounty -> claims -> user) and
+    checks verification on the locked rows. revoke_verification, delete_account and create_bounty
+    lock the same rows, so a revoke either commits before this check (and the accept fails) or waits
+    until this transaction commits (and the accept had already seen a valid verification). Never:
+    contact released to someone whose verification was revoked before the accept committed.
+    """
+    User = get_user_model()
+    locked = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={poster_id, claimant_id}).order_by("pk")}
+    poster, claimant = locked.get(poster_id), locked.get(claimant_id)
+    now = timezone.now()
+    if poster is None or not poster.is_active or not is_campus_verified(poster, now):
+        raise NotPermitted(
+            "Verify your campus identity before accepting a claim: it protects both of you before "
+            "contact details are shared."
+        )
+    if claimant is None or not claimant.is_active or not is_campus_verified(claimant, now):
+        raise NotPermitted(
+            "This claimant hasn't verified their campus identity yet, so you can't accept them. "
+            "Pick another claim, or ask them to verify first."
+        )
 
 
 def accept_claim(claim_id: int, user) -> Claim:
     """
     Atomically accepts one claim and rejects all other pending claims on the bounty.
-    Lock order: bounty, then claims. State is re-validated after the locks are held.
+    Lock order: bounty, then claims, then users. State is re-validated after the locks are held.
     """
     with transaction.atomic():
         bounty = _lock_bounty(_bounty_id_of_claim(claim_id))
@@ -126,6 +171,18 @@ def accept_claim(claim_id: int, user) -> Claim:
         if claim.status != ClaimStatus.PENDING:
             raise InvalidTransition(f"Cannot accept a claim with status '{claim.status}'.")
 
+        # Lock the other PENDING claims now (in id order), BEFORE the user rows: claims come before
+        # users in the fixed lock order.
+        other_claims = list(
+            Claim.objects.select_for_update()
+            .filter(bounty=bounty, status=ClaimStatus.PENDING)
+            .exclude(id=claim.id)
+            .order_by("id")
+        )
+
+        # I9: both parties campus-verified, checked under the user locks.
+        _require_both_campus_verified(bounty.poster_id, claim.claimant_id)
+
         # Update the accepted claim
         claim.status = ClaimStatus.ACCEPTED
         claim.save(update_fields=["status", "updated_at"])
@@ -135,13 +192,7 @@ def accept_claim(claim_id: int, user) -> Claim:
         bounty.accepted_claim = claim
         bounty.save(update_fields=["status", "accepted_claim", "updated_at"])
 
-        # Reject all other PENDING claims on this bounty (locked, in id order)
-        pending_claims = Claim.objects.select_for_update().filter(
-            bounty=bounty, status=ClaimStatus.PENDING
-        ).exclude(id=claim.id).order_by("id")
-
-        # Keep track of rejected claimants to send notification
-        other_claims = list(pending_claims)
+        # Reject all other PENDING claims on this bounty
         Claim.objects.filter(id__in=[c.id for c in other_claims]).update(status=ClaimStatus.REJECTED)
 
     # Dispatch notifications after transaction commits

@@ -9,8 +9,8 @@ The user row is kept but scrubbed and deactivated, never deleted. Why not ``DELE
   delete and re-verify the same card; a new account with that number collides and is flagged for
   review like any duplicate. The revocation history stays too, so the ban state survives.
 
-What is removed: username, email, names, password, group/permission/staff grants, the verification
-email token, the encrypted card name, the campus-email snapshot, and free-text claim contact. What
+What is removed: username, email, names, contact handle, password, group/permission/staff grants, the verification
+email token, the encrypted card name, the campus-email snapshot. What
 stays: ids, bounties, claims, reports, audit rows, the HMAC binding and revocation rows (no personal
 data: a keyed hash, last 4 digits, reasons). Bounty and claim *text* the user wrote stays too, shown
 under the placeholder username; scrubbing user-authored content is a separate decision.
@@ -92,13 +92,12 @@ def _anonymize(user, now) -> None:
     mine = CampusVerification.objects.filter(user=user)
     mine.filter(method=VerificationMethod.IN_PERSON).update(card_name_enc=None)
     mine.filter(method=VerificationMethod.CAMPUS_EMAIL).update(verified_email="")
-    Claim.objects.filter(claimant=user).update(contact="")  # free-text phone/handle
 
     # Unique, unguessable placeholders: a fixed "deleted-<id>" could be pre-registered by someone
     # else and make this save violate the case-insensitive unique constraints.
     label = f"deleted-{user.pk}-{secrets.token_hex(4)}"
     user.username, user.email = label, f"{label}@deleted.invalid"
-    user.first_name = user.last_name = ""
+    user.first_name = user.last_name = user.contact_handle = ""
     user.set_unusable_password()
     user.is_active = user.is_staff = user.is_superuser = False
     user.email_token_hash = user.email_token_expires_at = None

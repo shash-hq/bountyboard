@@ -54,6 +54,10 @@ STAFF_EMAIL_ALLOWLIST = [e.strip().lower() for e in env.list("STAFF_EMAIL_ALLOWL
 # Counted from the AuditEvent table (survives restarts, unlike a LocMem counter).
 VERIFIER_LIMIT_HOURLY = env.int("VERIFIER_LIMIT_HOURLY", default=30)
 VERIFIER_LIMIT_DAILY = env.int("VERIFIER_LIMIT_DAILY", default=150)
+# Live OPEN bounties a user may have: email-verified users 1, campus-verified users 5 (hidden ones
+# count). A lapsed or revoked verification drops back to the lower cap; bounties above it are left alone.
+OPEN_BOUNTY_CAP_EMAIL_VERIFIED = env.int("OPEN_BOUNTY_CAP_EMAIL_VERIFIED", default=1)
+OPEN_BOUNTY_CAP_CAMPUS_VERIFIED = env.int("OPEN_BOUNTY_CAP_CAMPUS_VERIFIED", default=5)
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 

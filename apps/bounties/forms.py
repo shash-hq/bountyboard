@@ -73,16 +73,12 @@ class BountyForm(forms.ModelForm):
 class ClaimForm(forms.ModelForm):
     class Meta:
         model = Claim
-        fields = ["message", "contact"]
+        fields = ["message"]
         widgets = {
             "message": forms.Textarea(attrs={
                 "class": "input-textarea",
                 "placeholder": "Why are you qualified to solve this? Include relevant skills, past lab work, or tools you have...",
                 "rows": 4,
-            }),
-            "contact": forms.TextInput(attrs={
-                "class": "input-text",
-                "placeholder": "WhatsApp phone number (+91...) or official email",
             }),
         }
 
@@ -93,12 +89,6 @@ class ClaimForm(forms.ModelForm):
         if len(msg) > 500:
             raise ValidationError("Message cannot exceed 500 characters.")
         return msg
-
-    def clean_contact(self):
-        contact = self.cleaned_data.get("contact", "").strip()
-        if not contact:
-            raise ValidationError("Contact details are required so the poster can reach you.")
-        return contact
 
 
 class ReportForm(forms.ModelForm):

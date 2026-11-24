@@ -19,9 +19,10 @@ from django_ratelimit.exceptions import Ratelimited
 
 from apps.bounties.models import Bounty, Claim
 from apps.bounties.exceptions import DomainError
-from apps.bounties.policies import can_moderate, can_verify_students
+from apps.bounties.policies import can_moderate, can_verify_students, is_campus_verified, open_bounty_cap
+from apps.bounties.services import count_live_open_bounties
 from . import campus, desk
-from .forms import ConfirmEmailForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
+from .forms import ConfirmEmailForm, ContactHandleForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
 from .ratelimits import confirm_account, desk_verifier, login_identifier, rate, reset_email
 from .campus import needs_reg_no
 from .identity import InvalidCardName, InvalidRegNo
@@ -267,16 +268,32 @@ def me_view(request):
         .order_by("-created_at")
     )
 
-    open_bounties_count = Bounty.objects.filter(poster=user, status="OPEN", is_hidden=False).count()
+    # Same count and cap as create_bounty enforces: hidden bounties count, and the cap depends on the tier.
+    open_bounties_count = count_live_open_bounties(user)
+    campus_verified = is_campus_verified(user)
 
     context = {
         "posted_bounties": posted_bounties,
         "submitted_claims": submitted_claims,
         "open_bounties_count": open_bounties_count,
+        "open_bounty_cap": open_bounty_cap(user),
+        "is_campus_verified": campus_verified,
         "is_moderator": can_moderate(user),
         **_campus_context(user),
     }
     return render(request, "accounts/me.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def contact_handle_view(request):
+    """Set or clear the optional contact handle. Plain form + PRG; works without JavaScript."""
+    form = ContactHandleForm(request.POST or None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Contact handle saved." if request.user.contact_handle else "Contact handle cleared.")
+        return redirect("me")
+    return render(request, "accounts/contact_handle.html", {"form": form})
 
 
 @method_decorator(ratelimit(key="ip", rate=rate("password_reset_per_ip"), method="POST", block=True), name="dispatch")

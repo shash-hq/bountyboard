@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Contact Handle | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card brutal-card--mint">
+    <h1 class="page-title">YOUR CONTACT HANDLE</h1>
+    <p>Your email is shared with the other person once a claim between you is accepted. You can add a WhatsApp number or handle to share as well. It is optional, and nobody sees it before acceptance.</p>
+
+    <form method="post" action="{% url 'accounts:contact_handle' %}">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label" for="id_contact_handle">WhatsApp number or handle</label>
+        {{ form.contact_handle }}
+        {% for e in form.contact_handle.errors %}<div class="field-error">{{ e }}</div>{% endfor %}
+        <p class="confirm-aside">Leave it blank to share only your email.</p>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">SAVE</button>
+    </form>
+    <p class="confirm-aside"><a href="{% url 'me' %}">&larr; Back to my dashboard</a></p>
+  </div>
+</div>
+{% endblock %}
