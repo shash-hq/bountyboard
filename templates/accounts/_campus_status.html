@@ -1,0 +1,30 @@
+{# The user's own campus-verification record. Never shows the registration number or card name. #}
+<div class="brutal-card {% if campus_verification %}brutal-card--mint{% else %}brutal-card--white{% endif %}" style="margin-bottom: var(--spacing-8);">
+  <h2 style="font-family: var(--font-display); font-size: var(--text-xl); margin: 0 0 var(--spacing-2) 0;">CAMPUS VERIFICATION</h2>
+  {% if campus_verification %}
+    <p style="margin: 0;">
+      <strong>Verified</strong> {{ campus_verification.get_method_display|lower }} on {{ campus_verification.verified_at|date:"M d, Y" }}.
+      Valid until <strong>{{ campus_expires_at|date:"M d, Y" }}</strong>.
+    </p>
+  {% else %}
+    <p style="margin: 0 0 var(--spacing-3) 0;">
+      You are <strong>not campus-verified</strong>. You can browse, post one open bounty and pitch, but you
+      can't accept or be accepted (that is when contact details are shared) until you are verified.
+    </p>
+    {% if last_verification and last_verification.revoked_at %}
+      <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification was revoked.</p>
+    {% elif last_verification %}
+      <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification expired on {{ last_verification.verified_at|date:"M d, Y" }} (it lasts a year).</p>
+    {% endif %}
+    {% if presence_code %}
+      <p style="margin: 0 0 var(--spacing-2) 0;">
+        To verify in person, show your LPU ID card and this code at a verification desk:
+      </p>
+      <p style="font-family: var(--font-display); font-size: var(--text-3xl); letter-spacing: 0.2em; margin: 0 0 var(--spacing-2) 0;" aria-label="Presence code">{{ presence_code }}</p>
+      <p style="margin: 0; font-size: var(--text-xs);">
+        The code changes every 10 minutes. <a href="{% url 'me' %}">Reload this page</a> for a fresh one.
+        Or sign up with your <code>@lpu.co.in</code> address to verify by email.
+      </p>
+    {% endif %}
+  {% endif %}
+</div>

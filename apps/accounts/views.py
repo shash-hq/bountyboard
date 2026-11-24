@@ -1,9 +1,13 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
@@ -16,7 +20,7 @@ from django_ratelimit.exceptions import Ratelimited
 from apps.bounties.models import Bounty, Claim
 from apps.bounties.exceptions import DomainError
 from apps.bounties.policies import can_moderate, can_verify_students
-from . import desk
+from . import campus, desk
 from .forms import ConfirmEmailForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
 from .ratelimits import confirm_account, desk_verifier, login_identifier, rate, reset_email
 from .campus import needs_reg_no
@@ -183,6 +187,22 @@ def logout_view(request):
     return redirect("landing")
 
 
+def _campus_context(user):
+    """The user's own verification record and, if they are not verified, the desk presence code.
+
+    Deliberately omits ``card_name_enc`` (the manager defers it) and the registration number.
+    """
+    now = timezone.now()
+    active = campus.active_verifications(now).filter(user=user).first()
+    ctx = {"campus_verification": active, "presence_code": None}
+    if active is not None:
+        ctx["campus_expires_at"] = active.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
+    elif user.email_verified_at is not None:
+        ctx["last_verification"] = user.campus_verifications.order_by("-verified_at").first()
+        ctx["presence_code"] = desk.presence_code(user.pk, now)
+    return ctx
+
+
 @login_required
 @ratelimit(group="desk", key=desk_verifier, rate=rate("desk_per_verifier"), method="POST", block=True)
 @never_cache
@@ -216,6 +236,7 @@ def desk_view(request):
 
 
 @login_required
+@never_cache
 def me_view(request):
     """User profile and personal activity dashboard."""
     user = request.user
@@ -242,6 +263,7 @@ def me_view(request):
         "submitted_claims": submitted_claims,
         "open_bounties_count": open_bounties_count,
         "is_moderator": can_moderate(user),
+        **_campus_context(user),
     }
     return render(request, "accounts/me.html", context)
 
