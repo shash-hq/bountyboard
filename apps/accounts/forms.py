@@ -153,3 +153,21 @@ class LoginForm(forms.Form):
             cleaned_data["user"] = user
 
         return cleaned_data
+
+
+class DeskVerifyForm(forms.Form):
+    """What a verifier types at the desk. The card name is the name *as printed*, free text."""
+
+    username = forms.CharField(
+        label="Student's username", max_length=150,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off", "autocapitalize": "none"}),
+    )
+    code = forms.CharField(
+        label="Presence code (shown on the student's phone)", max_length=6,
+        widget=forms.TextInput(attrs={"class": "input-text", "inputmode": "numeric", "autocomplete": "off"}),
+    )
+    reg_no = RegNoField()
+    card_name = forms.CharField(
+        label="Name as printed on the card", max_length=100,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )

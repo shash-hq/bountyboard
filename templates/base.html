@@ -73,6 +73,9 @@
           {% if can_moderate %}
             <a href="{% url 'bounties:mod_queue' %}" class="btn btn-sm" style="background-color: var(--pink); color: var(--white);">MOD QUEUE</a>
           {% endif %}
+          {% if can_verify_students %}
+            <a href="{% url 'accounts:desk' %}" class="btn btn-sm">VERIFY DESK</a>
+          {% endif %}
           <a href="/me/" class="btn btn-sm">MY DASHBOARD</a>
           <a href="/bounties/new/" class="btn btn-sm btn-primary">+ POST BOUNTY</a>
           <form action="/accounts/logout/" method="post" style="display: inline; margin: 0;">

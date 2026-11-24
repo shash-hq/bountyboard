@@ -45,6 +45,11 @@ def reset_email(group, request):
     return _normalized(request, "email")
 
 
+def desk_verifier(group, request):
+    """Per verifier account, so a compromised verifier cannot brute-force 6-digit presence codes."""
+    return f"verifier:{request.user.pk}"
+
+
 def rate(name):
     """A callable rate so the value is read from settings at request time (overridable in tests)."""
     return lambda group, request: settings.RATE_LIMITS[name]

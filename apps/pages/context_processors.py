@@ -1,6 +1,6 @@
 from django.conf import settings
 
-from apps.bounties.policies import can_moderate
+from apps.bounties.policies import can_moderate, can_verify_students
 
 
 def global_ui_context(request):
@@ -12,5 +12,6 @@ def global_ui_context(request):
     return {
         "bb_layout": layout,
         "can_moderate": can_moderate(request.user) if hasattr(request, "user") else False,
+        "can_verify_students": can_verify_students(request.user) if hasattr(request, "user") else False,
         "DEBUG": settings.DEBUG,
     }

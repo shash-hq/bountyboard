@@ -37,6 +37,15 @@ def can_moderate(user) -> bool:
     return bool(getattr(user, "is_authenticated", False)) and user.has_perm("bounties.moderate")
 
 
+def can_verify_students(user) -> bool:
+    """May ``user`` use the verifier desk?
+
+    Holding ``accounts.verify_student`` (the Verifiers group, or a superuser) and nothing else:
+    this grants no moderation power and no access to anyone's contact details.
+    """
+    return bool(getattr(user, "is_authenticated", False)) and user.has_perm("accounts.verify_student")
+
+
 def can_view_hidden_bounty(user, bounty) -> bool:
     """A hidden bounty is visible only to its poster and to moderators."""
     if not getattr(user, "is_authenticated", False):
