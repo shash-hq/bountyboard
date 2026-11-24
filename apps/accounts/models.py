@@ -48,6 +48,11 @@ class User(AbstractUser):
         related_name="+",
     )
 
+    # Set when the owner deletes their account. The row is kept (anonymized, inactive) so the
+    # registration-number binding, the revocation history and the counterparties' bounties and
+    # claims all stay intact. See apps/accounts/deletion.py.
+    deleted_at = models.DateTimeField(null=True, blank=True, editable=False)
+
     objects = BountyUserManager()
 
     class Meta(AbstractUser.Meta):
@@ -63,6 +68,11 @@ class User(AbstractUser):
                     | models.Q(staff_source__isnull=False, staff_since__isnull=False)
                 ),
                 name="accounts_user_staff_source_iff_since",
+            ),
+            # A deleted account can never be active, whatever code path flips is_active.
+            models.CheckConstraint(
+                condition=models.Q(deleted_at__isnull=True) | models.Q(is_active=False),
+                name="accounts_user_deleted_is_inactive",
             ),
         ]
         permissions = [
@@ -112,6 +122,7 @@ class RevokeReason(models.TextChoices):
     EMAIL_CHANGED = "EMAIL_CHANGED", "Email changed"
     EXPIRED = "EXPIRED", "Lapsed past the TTL (set by the sweeper)"
     SUPERSEDED = "SUPERSEDED", "Closed by a renewal"
+    ACCOUNT_DELETED = "ACCOUNT_DELETED", "The owner deleted their account"
 
 
 class CampusVerificationManager(models.Manager):
@@ -179,9 +190,14 @@ class CampusVerification(models.Model):
                 name="accounts_campusverification_revoked_iff_reason",
             ),
             models.CheckConstraint(
+                # An ACTIVE in-person row must carry a card name. A closed (revoked) row may have it
+                # wiped: account deletion removes the name but keeps the row as revocation history.
                 condition=(
                     ~models.Q(method="IN_PERSON")
-                    | models.Q(verified_by__isnull=False, card_name_enc__isnull=False)
+                    | (
+                        models.Q(verified_by__isnull=False)
+                        & (models.Q(card_name_enc__isnull=False) | models.Q(revoked_at__isnull=False))
+                    )
                 ),
                 name="accounts_campusverification_in_person_fields",
             ),

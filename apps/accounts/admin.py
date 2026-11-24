@@ -16,12 +16,12 @@ class UserAdmin(DjangoUserAdmin):
             return super().get_readonly_fields(request, obj)
         return [
             *super().get_readonly_fields(request, obj),
-            "email", "email_verified_at", "staff_since", "staff_source", "staff_granted_by",
+            "email", "email_verified_at", "staff_since", "staff_source", "staff_granted_by", "deleted_at",
         ]
 
     fieldsets = [
         *DjangoUserAdmin.fieldsets,
-        ("Email verification", {"fields": ["email_verified_at"]}),
+        ("Email verification", {"fields": ["email_verified_at", "deleted_at"]}),
         # Shown, never edited: the staff role changes only through services (moderator grant or
         # the email allowlist), each of which writes an AuditEvent.
         ("Staff role (read-only)", {"fields": ["staff_since", "staff_source", "staff_granted_by"]}),
