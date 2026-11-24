@@ -3,7 +3,14 @@ import os
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
-from .base import *  # noqa: F403
+try:
+    from .base import *  # noqa: F403
+except dj_database_url.UnknownSchemeError as exc:
+    # base.py parses DATABASE_URL while it is being imported; a blank or scheme-less value dies there
+    # with a message that doesn't name the variable. Still a crash at boot, but say which setting.
+    raise ImproperlyConfigured(
+        "DATABASE_URL is blank or has no recognizable scheme; it must be a postgres:// or postgresql:// URL."
+    ) from exc
 
 DEBUG = False
 
@@ -44,6 +51,14 @@ for _origin in CSRF_TRUSTED_ORIGINS:
 SITE_URL = _required("SITE_URL").rstrip("/")
 if not SITE_URL.startswith("https://"):
     raise ImproperlyConfigured("SITE_URL must be an https:// URL in production.")
+
+# The database. base.py builds DATABASES from DATABASE_URL but falls back to a local SQLite file when
+# it is unset, which on Render means a build that "migrates" a throwaway file and an app that loses its
+# data on every restart. Production must name a real PostgreSQL database or refuse to boot.
+DATABASE_URL = _required("DATABASE_URL")
+if not DATABASE_URL.lower().startswith(("postgres://", "postgresql://")):
+    raise ImproperlyConfigured("DATABASE_URL must be a postgres:// or postgresql:// URL in production (SQLite is not allowed).")
+DATABASES = {"default": dj_database_url.config(default=DATABASE_URL, conn_max_age=600, conn_health_checks=True)}
 
 # Campus-verification keys. Separate from SECRET_KEY so rotating one doesn't break the other.
 REG_NO_HMAC_KEY = _required("REG_NO_HMAC_KEY")

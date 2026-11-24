@@ -55,7 +55,9 @@ jobs:
         ALLOWED_HOSTS: bountyboard.example.com
         CSRF_TRUSTED_ORIGINS: https://bountyboard.example.com
         SITE_URL: https://bountyboard.example.com
-        # Throwaway CI-only values; prod.py refuses to boot without keys of this shape.
+        # Throwaway CI-only values; prod.py refuses to boot without keys of this shape. `check` does
+        # not connect, so the database URL only has to be well-formed.
+        DATABASE_URL: postgres://ci:ci@localhost:5432/ci
         REG_NO_HMAC_KEY: ci-only-reg-no-hmac-key-0123456789-abcdefghijklmnop
         CARD_NAME_KEYS: Zm9vYmFyLWNhcmQtbmFtZS1rZXktMzItYnl0ZXMhISE=
       run: |
