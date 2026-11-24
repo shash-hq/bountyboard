@@ -31,8 +31,8 @@ class ExceptionShapeTests(TestCase):
 
 class ServiceErrorsReachUsersAsPlainTextTests(TestCase):
     def setUp(self):
-        self.poster = User.objects.create(username="p", email="p@example.org")
-        self.other = User.objects.create(username="o", email="o@example.org")
+        self.poster = User.objects.create(username="p", email="p@example.org", email_verified_at=timezone.now())
+        self.other = User.objects.create(username="o", email="o@example.org", email_verified_at=timezone.now())
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Exception text bounty", description="x" * 30,
             reward=100, deadline=timezone.now() + timedelta(days=2),

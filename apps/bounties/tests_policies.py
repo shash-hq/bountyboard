@@ -16,13 +16,13 @@ User = get_user_model()
 
 class CanModerateTests(TestCase):
     def setUp(self):
-        self.plain = User.objects.create(username="plain", email="plain@example.org")
+        self.plain = User.objects.create(username="plain", email="plain@example.org", email_verified_at=timezone.now())
         # is_staff only opens /admin/; it must grant no moderation power.
-        self.staff_only = User.objects.create(username="staffonly", email="staff@example.org", is_staff=True)
-        self.moderator = User.objects.create(username="mod", email="mod@example.org")
+        self.staff_only = User.objects.create(username="staffonly", email="staff@example.org", is_staff=True, email_verified_at=timezone.now())
+        self.moderator = User.objects.create(username="mod", email="mod@example.org", email_verified_at=timezone.now())
         self.moderator.groups.add(Group.objects.get(name="Moderators"))
         self.superuser = User.objects.create_superuser("root", "root@example.org", "pw-Strong-123")
-        self.poster = User.objects.create(username="poster", email="poster@example.org")
+        self.poster = User.objects.create(username="poster", email="poster@example.org", email_verified_at=timezone.now())
         self.bounty = Bounty.objects.create(
             poster=self.poster, title="Policy test bounty", description="x" * 30,
             reward=100, deadline=timezone.now() + timedelta(days=2), is_hidden=True,
