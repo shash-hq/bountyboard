@@ -95,6 +95,11 @@
                   </span>
                 </div>
                 <div>
+                  {% if c.claimant_verified %}
+                    <span class="stamp-badge stamp-open">CAMPUS VERIFIED</span>
+                  {% else %}
+                    <span class="stamp-badge stamp-cancelled">NOT CAMPUS-VERIFIED</span>
+                  {% endif %}
                   {% if c.status == 'ACCEPTED' %}
                     <span class="stamp-badge stamp-open">ACCEPTED SOLVER</span>
                   {% elif c.status == 'PENDING' %}
@@ -123,13 +128,20 @@
 
               <!-- Accept / Reject Actions for poster -->
               {% if is_poster and bounty.status == 'OPEN' and not bounty.is_expired and c.status == 'PENDING' %}
+                {% if not poster_verified %}
+                  <div class="field-help">You can accept claims once your campus identity is verified. It protects both of you before contact details are shared.</div>
+                {% elif not c.claimant_verified %}
+                  <div class="field-help">This claimant hasn't verified their campus identity yet, so they can't be accepted. You can reject them, or wait for them to verify.</div>
+                {% endif %}
                 <div style="display: flex; gap: var(--spacing-2); margin-top: var(--spacing-3);">
+                  {% if poster_verified and c.claimant_verified %}
                   <form action="/claims/{{ c.pk }}/accept/" method="post" style="display: inline; margin: 0;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-mint" onclick="return confirm('Accept this claim? All other pending claims will be rejected automatically.');">
                       ACCEPT THIS CLAIM
                     </button>
                   </form>
+                  {% endif %}
                   <form action="/claims/{{ c.pk }}/reject/" method="post" style="display: inline; margin: 0;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm" onclick="return confirm('Reject this claim?');">

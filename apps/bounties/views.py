@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.accounts import campus
 from config.http import safe_referer
 
 from .forms import BountyForm, ClaimForm, ReportForm
@@ -17,6 +18,7 @@ from .exceptions import DomainError
 from .policies import (
     can_moderate,
     can_view_contact,
+    is_campus_verified,
     can_view_claims,
     can_view_hidden_bounty,
     open_bounty_cap,
@@ -139,8 +141,14 @@ def bounty_detail_view(request, pk, slug):
     claims = []
     if can_view_claims(request.user, bounty):
         claims = list(bounty.claims.select_related("claimant", "bounty").order_by("-created_at"))
+        # One query for who among the claimants is campus-verified (display only: accept_claim
+        # re-checks under the locks).
+        verified_ids = set(
+            campus.active_verifications().filter(user_id__in=[c.claimant_id for c in claims]).values_list("user_id", flat=True)
+        )
         for c in claims:
             c.contact_visible = can_view_contact(request.user, c.claimant, bounty)
+            c.claimant_verified = c.claimant_id in verified_ids
 
     claim_form = ClaimForm() if bounty.can_claim(request.user) else None
     report_form = ReportForm() if request.user.is_authenticated and request.user != bounty.poster else None
@@ -153,6 +161,7 @@ def bounty_detail_view(request, pk, slug):
         "report_form": report_form,
         "can_edit": bounty.can_edit(request.user),
         "is_poster": request.user == bounty.poster,
+        "poster_verified": is_campus_verified(request.user) if request.user == bounty.poster else False,
         "show_poster_contact": can_view_contact(request.user, bounty.poster, bounty),
     }
     return render(request, "bounties/detail.html", context)

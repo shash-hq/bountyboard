@@ -14,12 +14,14 @@
           </h1>
           {% if is_moderator %}
             <span class="stamp-badge stamp-claimed">MODERATOR</span>
+          {% elif is_campus_verified %}
+            <span class="stamp-badge stamp-open">CAMPUS VERIFIED</span>
           {% else %}
-            <span class="stamp-badge stamp-open">CAMPUS STUDENT</span>
+            <span class="stamp-badge stamp-claimed">EMAIL VERIFIED</span>
           {% endif %}
         </div>
         <p style="margin: 0; font-size: var(--text-sm); color: var(--muted-ink);">
-          Email: <strong>{{ user.email }}</strong> &bull; Active Open Bounties: <strong>{{ open_bounties_count }}/5</strong>
+          Email: <strong>{{ user.email }}</strong> &bull; Open Bounties: <strong>{{ open_bounties_count }}/{{ open_bounty_cap }}</strong>
         </p>
       </div>
 
