@@ -291,6 +291,7 @@ class AuditAction(models.TextChoices):
     CONTACT_VIEWED = "CONTACT_VIEWED"
     CARD_NAME_VIEWED = "CARD_NAME_VIEWED"
     REG_NO_LOOKUP = "REG_NO_LOOKUP"
+    ACCOUNT_DELETED = "ACCOUNT_DELETED"
 
 
 class AuditEvent(models.Model):
