@@ -48,6 +48,9 @@ class User(AbstractUser):
         related_name="+",
     )
 
+    # Optional WhatsApp number or handle, shown only to the other party once a claim between you is
+    # ACCEPTED (policies.can_view_contact). Email is always shown at that point; this is the extra.
+    contact_handle = models.CharField(max_length=100, blank=True, default="")
     # Set when the owner deletes their account. The row is kept (anonymized, inactive) so the
     # registration-number binding, the revocation history and the counterparties' bounties and
     # claims all stay intact. See apps/accounts/deletion.py.

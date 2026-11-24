@@ -21,7 +21,7 @@ from apps.bounties.models import Bounty, Claim
 from apps.bounties.exceptions import DomainError
 from apps.bounties.policies import can_moderate, can_verify_students
 from . import campus, desk
-from .forms import ConfirmEmailForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
+from .forms import ConfirmEmailForm, ContactHandleForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
 from .ratelimits import confirm_account, desk_verifier, login_identifier, rate, reset_email
 from .campus import needs_reg_no
 from .identity import InvalidCardName, InvalidRegNo
@@ -277,6 +277,18 @@ def me_view(request):
         **_campus_context(user),
     }
     return render(request, "accounts/me.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def contact_handle_view(request):
+    """Set or clear the optional contact handle. Plain form + PRG; works without JavaScript."""
+    form = ContactHandleForm(request.POST or None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Contact handle saved." if request.user.contact_handle else "Contact handle cleared.")
+        return redirect("me")
+    return render(request, "accounts/contact_handle.html", {"form": form})
 
 
 @method_decorator(ratelimit(key="ip", rate=rate("password_reset_per_ip"), method="POST", block=True), name="dispatch")

@@ -27,6 +27,7 @@
         {% if is_moderator %}
           <a href="{% url 'bounties:mod_queue' %}" class="btn btn-secondary">MODERATOR QUEUE</a>
         {% endif %}
+        <a href="{% url 'accounts:contact_handle' %}" class="btn btn-secondary">CONTACT HANDLE</a>
         <a href="/bounties/new/" class="btn btn-primary">+ POST NEW BOUNTY</a>
       </div>
     </div>

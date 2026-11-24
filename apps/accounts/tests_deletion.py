@@ -55,7 +55,9 @@ class Base(TestCase):
         self.vol.groups.add(Group.objects.get(name="Verifiers"))
         self.mod = create_verified_user("mod", "mod@gmail.com", PW)
         self.mod.groups.add(Group.objects.get(name="Moderators"))
-        self.stu = create_verified_user("stu", "stu.private@gmail.com", PW, first_name="Asha", last_name="Verma")
+        self.stu = create_verified_user(
+            "stu", "stu.private@gmail.com", PW, first_name="Asha", last_name="Verma", contact_handle="+91 98765 43210"
+        )
         self.other = create_verified_user("other", "other@gmail.com", PW)
 
     def desk_verify(self, who=None, name="Asha Verma", reg=REG):
@@ -73,7 +75,7 @@ class AnonymizeTests(Base):
         self.assertEqual(u.deleted_at, self.now)
         self.assertFalse(u.is_active)
         self.assertTrue(u.username.startswith("deleted-") and u.email.endswith("@deleted.invalid"))
-        self.assertEqual((u.first_name, u.last_name), ("", ""))
+        self.assertEqual((u.first_name, u.last_name, u.contact_handle), ("", "", ""))
         self.assertFalse(u.has_usable_password())
         self.assertNotEqual(u.password, old_hash)
         self.assertFalse(u.groups.exists() or u.user_permissions.exists() or u.is_staff or u.is_superuser)
