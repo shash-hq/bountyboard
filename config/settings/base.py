@@ -61,6 +61,12 @@ OPEN_BOUNTY_CAP_CAMPUS_VERIFIED = env.int("OPEN_BOUNTY_CAP_CAMPUS_VERIFIED", def
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 
+# Outbox email delivery. The provider's budget is 300/day and account verification and password reset
+# come first, so notification mail is capped well below it.
+OUTBOX_EMAIL_DAILY_CAP = env.int("OUTBOX_EMAIL_DAILY_CAP", default=150)
+OUTBOX_MAX_ATTEMPTS = env.int("OUTBOX_MAX_ATTEMPTS", default=6)
+OUTBOX_DRAIN_LIMIT = env.int("OUTBOX_DRAIN_LIMIT", default=20)
+
 # Application definition
 DJANGO_APPS = [
     "whitenoise.runserver_nostatic",

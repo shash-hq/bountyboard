@@ -223,17 +223,35 @@ class Report(models.Model):
 
 
 class NotificationKind(models.TextChoices):
+    CLAIM_RECEIVED = "CLAIM_RECEIVED", "A claim was submitted on your bounty"
+    CLAIM_ACCEPTED = "CLAIM_ACCEPTED", "Your claim was accepted"
+    CLAIM_REJECTED = "CLAIM_REJECTED", "Your claim was rejected"
+    CLAIM_WITHDRAWN = "CLAIM_WITHDRAWN", "A claim on your bounty was withdrawn"
+    BOUNTY_DONE = "BOUNTY_DONE", "The bounty you worked on was marked done"
+    BOUNTY_CANCELLED = "BOUNTY_CANCELLED", "A bounty you claimed was cancelled"
+    BOUNTY_EXPIRED = "BOUNTY_EXPIRED", "A bounty expired"
     COUNTERPARTY_REVOKED = "COUNTERPARTY_REVOKED", "Counterparty lost campus verification"
     COUNTERPARTY_CANCELLED = "COUNTERPARTY_CANCELLED", "Counterparty cancelled after a verification revocation"
 
 
+class EmailStatus(models.TextChoices):
+    NONE = "NONE", "In-app only"
+    PENDING = "PENDING", "Waiting to be emailed (or retried)"
+    SENT = "SENT", "Emailed"
+    DEAD = "DEAD", "Gave up after repeated failures"
+
+
 class Notification(models.Model):
-    """In-app notification row, shaped like the outbox's: one row per (event, recipient).
+    """The transactional outbox, and the in-app inbox: one row per (event, recipient).
 
     `idempotency_key` is unique, so a retried transition or a double submit cannot notify twice.
     Rows are written inside the same transaction as the state change they describe (I7), which is
     why creation lives in `inbox.notify` and callers must already be in `transaction.atomic()`.
-    There is no delivery loop yet: the email columns (attempts, delivered_at) arrive with the outbox.
+
+    Email is a scarce resource, so only some kinds ask for it (`email_status=PENDING`); the rest are
+    in-app only (`NONE`). `outbox.py` delivers PENDING rows: once on commit for latency, and from
+    `/internal/tick` with `SELECT ... FOR UPDATE SKIP LOCKED`, exponential backoff and a retry limit.
+    Delivery is at-least-once (a crash between SMTP accepting a message and our commit can resend it).
     """
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
@@ -241,14 +259,41 @@ class Notification(models.Model):
     bounty = models.ForeignKey(
         Bounty, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
+    # The claim an email is about. The email body is rendered from fresh rows at send time.
+    claim = models.ForeignKey(
+        Claim, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     message = models.CharField(max_length=300)
     idempotency_key = models.CharField(max_length=120, unique=True)
     created_at = models.DateTimeField(default=timezone.now)
     read_at = models.DateTimeField(null=True, blank=True)
 
+    email_status = models.CharField(max_length=8, choices=EmailStatus.choices, default=EmailStatus.NONE)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=200, blank=True, default="")
+
     class Meta:
         ordering = ["-created_at", "-id"]
-        indexes = [models.Index(fields=["recipient", "read_at", "-created_at"])]
+        indexes = [
+            models.Index(fields=["recipient", "read_at", "-created_at"]),
+            models.Index(fields=["next_attempt_at"], condition=models.Q(email_status="PENDING"), name="notification_pending_due"),
+        ]
+        constraints = [
+            # A PENDING row always says when to try next, and only PENDING rows do.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(email_status="PENDING", next_attempt_at__isnull=False)
+                    | (~models.Q(email_status="PENDING") & models.Q(next_attempt_at__isnull=True))
+                ),
+                name="notification_pending_iff_next_attempt",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(email_status="SENT", delivered_at__isnull=False) | ~models.Q(email_status="SENT"),
+                name="notification_sent_has_delivered_at",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.kind} for {self.recipient_id}"
