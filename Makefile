@@ -5,9 +5,10 @@ SETTINGS = --settings=config.settings.test
 .PHONY: install lock test coverage stress mutation
 
 install:
-	pip install --require-hashes -r requirements-dev.lock
+	$(PYTHON) -m pip install --require-hashes -r requirements-dev.lock
 
 # Re-resolve the hashed lockfiles after editing requirements*.txt. Set UPGRADE=--upgrade to bump versions.
+# Needs uv, which the lockfiles do not install: https://docs.astral.sh/uv/getting-started/installation/
 lock:
 	uv pip compile requirements.txt --universal --python-version 3.12 --generate-hashes $(UPGRADE) -o requirements.lock
 	uv pip compile requirements-dev.txt --universal --python-version 3.12 --generate-hashes $(UPGRADE) -o requirements-dev.lock
@@ -16,8 +17,8 @@ test:
 	$(PYTHON) manage.py test $(SETTINGS) --noinput
 
 coverage:
-	coverage run --branch manage.py test $(SETTINGS) --noinput
-	coverage report --fail-under=91 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
+	$(PYTHON) -m coverage run --branch manage.py test $(SETTINGS) --noinput
+	$(PYTHON) -m coverage report --fail-under=91 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
 
 # Run the concurrency tests 20 times; stops at the first failure.
 stress:

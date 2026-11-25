@@ -59,8 +59,15 @@ class AdminServiceOwnedStateTests(TestCase):
         self.assertIsNone(self.bounty.accepted_claim_id)
 
     def test_posted_state_is_ignored_on_a_claim(self):
+        other = Bounty.objects.create(
+            poster=self.poster,
+            title="Another bounty",
+            description="x" * 30,
+            reward=100,
+            deadline=timezone.now() + timedelta(days=2),
+        )
         model_admin, request, form = self.form_for(
-            self.claim, status=ClaimStatus.ACCEPTED, claimant=self.root.pk, message="edited by admin"
+            self.claim, status=ClaimStatus.ACCEPTED, bounty=other.pk, claimant=self.root.pk, message="edited by admin"
         )
         self.assertTrue(form.is_valid(), form.errors)
         model_admin.save_model(request, form.save(commit=False), form, change=True)
@@ -68,6 +75,7 @@ class AdminServiceOwnedStateTests(TestCase):
         self.assertEqual(self.claim.message, "edited by admin")
         self.assertEqual(self.claim.status, ClaimStatus.PENDING)
         self.assertEqual(self.claim.claimant, self.helper)
+        self.assertEqual(self.claim.bounty, self.bounty)
 
     def test_save_does_not_undo_a_transition_that_committed_after_the_page_was_read(self):
         model_admin, request, form = self.form_for(self.bounty, title="Renamed by admin")
