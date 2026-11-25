@@ -19,6 +19,14 @@ from .models import AuditEvent, CampusVerification, RevokeReason, User
 logger = logging.getLogger(__name__)
 
 
+REMINDER_KEY = "renewal-reminder:"
+
+
+def reminder_verification_pk(idempotency_key: str) -> int:
+    """Which verification a reminder row was queued for."""
+    return int(idempotency_key.removeprefix(REMINDER_KEY))
+
+
 def _cutoff(now):
     return now - timedelta(days=settings.VERIFICATION_TTL_DAYS)
 
@@ -36,7 +44,7 @@ def expire_lapsed(now=None, limit=100) -> int:
     for pk, user_id in ids:
         try:
             with transaction.atomic():
-                user = User.objects.select_for_update().get(pk=user_id)
+                user = User.objects.select_for_update(no_key=True).get(pk=user_id)
                 row = CampusVerification.objects.filter(
                     pk=pk, revoked_at__isnull=True, verified_at__lte=cutoff
                 ).first()
@@ -78,13 +86,15 @@ def remind_expiring(now=None, limit=None) -> int:
         CampusVerification.objects.filter(
             revoked_at__isnull=True, renewal_reminder_sent_at__isnull=True,
             verified_at__gt=cutoff, verified_at__lte=window_end,
+            # Here and not only in the loop: accounts that are always skipped would fill every batch.
+            user__is_active=True, user__email_verified_at__isnull=False,
         ).order_by("verified_at", "pk").values_list("pk", "user_id")[:budget]
     )
     sent = 0
     for pk, user_id in due:
         try:
             with transaction.atomic():
-                user = User.objects.select_for_update().get(pk=user_id)
+                user = User.objects.select_for_update(no_key=True).get(pk=user_id)
                 row = CampusVerification.objects.filter(
                     pk=pk, revoked_at__isnull=True, renewal_reminder_sent_at__isnull=True, verified_at__gt=cutoff,
                 ).first()
@@ -92,11 +102,11 @@ def remind_expiring(now=None, limit=None) -> int:
                     continue
                 row.renewal_reminder_sent_at = now
                 row.save(update_fields=["renewal_reminder_sent_at"])
-                lapses = row.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
+                lapses = timezone.localtime(row.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS))
                 inbox.notify(
                     user, NotificationKind.RENEWAL_REMINDER,
                     f"Your campus verification expires on {lapses:%b %d, %Y}. Renew it from your dashboard.",
-                    f"renewal-reminder:{row.pk}", email=True, now=now,
+                    f"{REMINDER_KEY}{row.pk}", email=True, now=now,
                 )
                 sent += 1
         except Exception:  # noqa: BLE001

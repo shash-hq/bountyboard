@@ -44,8 +44,13 @@ def renewal_reminder(n):
     from django.urls import reverse
 
     from apps.accounts import campus
+    from apps.accounts.expiry import reminder_verification_pk
 
     user = n.recipient
+    # Queued earlier, sent now: by then they may have renewed, lapsed, been revoked or deleted.
+    verification = reminder_verification_pk(n.idempotency_key)
+    if not campus.active_verifications().filter(pk=verification, user=user).exists():
+        raise Obsolete("that verification is no longer about to lapse")
     subject = "[Bounty Board] Your campus verification expires soon"
     if campus.campus_email_allowed(user.email):
         action = (
