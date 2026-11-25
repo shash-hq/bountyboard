@@ -2,7 +2,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
+from django.utils import timezone
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -72,8 +73,11 @@ def board_view(request):
     if category and category in Category.values:
         queryset = queryset.filter(category=category)
 
+    now = timezone.now()
     if status == "OPEN":
-        queryset = queryset.filter(status=BountyStatus.OPEN)
+        # An OPEN row past its deadline is expired, not open: it can't be claimed, so the "Open" tab
+        # must not offer it. (A sweeper will turn these into EXPIRED; this holds until it has run.)
+        queryset = queryset.filter(status=BountyStatus.OPEN, deadline__gt=now)
     elif status == "CLAIMED":
         queryset = queryset.filter(status=BountyStatus.CLAIMED)
     elif status == "DONE":
@@ -91,7 +95,15 @@ def board_view(request):
     elif sort == "reward_low":
         queryset = queryset.order_by("reward", "-created_at")
     elif sort == "deadline_soon":
-        queryset = queryset.order_by("deadline")
+        # Bounties you can still act on come first, soonest deadline first. Everything else (expired,
+        # claimed, done, cancelled) follows: an expired deadline is the *earliest* date, so a plain
+        # "ORDER BY deadline" would put dead bounties at the top.
+        queryset = queryset.annotate(
+            _past=Case(
+                When(status=BountyStatus.OPEN, deadline__gt=now, then=Value(0)),
+                default=Value(1), output_field=IntegerField(),
+            )
+        ).order_by("_past", "deadline", "pk")
     else:  # default 'newest'
         queryset = queryset.order_by("-created_at")
 

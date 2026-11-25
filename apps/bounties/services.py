@@ -57,9 +57,10 @@ EDITABLE_FIELDS = ("title", "description", "category", "reward", "deadline")
 
 
 def count_live_open_bounties(user) -> int:
-    """The user's OPEN bounties, hidden ones included (invariant I4): hiding a listing must not be a way
-    to post past the cap."""
-    return Bounty.objects.filter(poster=user, status=BountyStatus.OPEN).count()
+    """The user's live OPEN bounties, hidden ones included (invariant I4): hiding a listing must not be a
+    way to post past the cap. "Live" means the deadline hasn't passed: an expired bounty can't be
+    claimed, so it must not block posting while it waits for the sweeper to close it."""
+    return Bounty.objects.filter(poster=user, status=BountyStatus.OPEN, deadline__gt=timezone.now()).count()
 
 
 def open_limit_message(user, cap: int) -> str:
