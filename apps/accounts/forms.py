@@ -248,3 +248,12 @@ class StaffNoteForm(forms.Form):
         label="Note (optional)", max_length=500, required=False,
         widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
     )
+
+
+class RenewForm(forms.Form):
+    """Confirming a renewal. The registration number is asked only if the account has no binding."""
+
+    def __init__(self, *args, ask_reg_no=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if ask_reg_no:
+            self.fields["reg_no"] = RegNoField()

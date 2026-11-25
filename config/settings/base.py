@@ -218,6 +218,9 @@ RATE_LIMITS = {
     # Every desk submission, successful or not, per verifier. The service caps successful
     # verifications; this caps *guessing* presence codes (a wrong code is not a verification).
     "desk_per_verifier": "60/h",
+    # Renewal sends a link to the campus mailbox (email budget), so limit it per account.
+    "renew_request_per_user": "3/h",
+    "renew_confirm_per_user": "20/h",
 }
 
 # Cache backend (LocMem for dev & rate limiting)
