@@ -2,7 +2,8 @@
 
 Actors are chosen at random too, so permission and transition refusals are exercised; a refusal
 (DomainError) is a normal outcome and must leave the invariants intact. Single-threaded: concurrency
-is covered by the race tests. I7 (the outbox) has no table yet, so it is not checked here.
+is covered by the race tests. I7 is checked as: each move a rule makes leaves exactly one
+notification row for it.
 """
 from datetime import timedelta
 
@@ -18,12 +19,13 @@ from apps.accounts import campus, moderation
 from apps.accounts.testing import campus_verify, create_verified_user
 from apps.bounties import services
 from apps.bounties.exceptions import DomainError
-from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
+from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus, Notification
 from apps.bounties.policies import can_view_contact, is_campus_verified, open_bounty_cap
 
 ALLOWED_BOUNTY_MOVES = {
     (BountyStatus.OPEN, BountyStatus.CLAIMED),
     (BountyStatus.OPEN, BountyStatus.CANCELLED),
+    (BountyStatus.OPEN, BountyStatus.EXPIRED),
     (BountyStatus.CLAIMED, BountyStatus.DONE),
     (BountyStatus.CLAIMED, BountyStatus.CANCELLED),  # only after the counterparty is revoked
 }
@@ -146,6 +148,12 @@ class Lifecycle(RuleBasedStateMachine):
         else:
             campus_verify(user)
 
+    @rule(which=picks)
+    def expire(self, which):
+        if bounty := self.pick(Bounty, which, BountyStatus.OPEN):
+            # A clock past every deadline in this test, instead of editing the row.
+            self.attempt(services.expire_bounty, bounty.pk, timezone.now() + timedelta(days=3))
+
     @rule()
     def renew_lapsed_verifications(self):
         """Lapses and revocations pile up; without this, long runs have nobody left who can accept."""
@@ -214,7 +222,30 @@ class Lifecycle(RuleBasedStateMachine):
                 assert before == status or (before, status) in allowed, (model.__name__, before, status)
                 if before != status:
                     self.moved.add((model.__name__, before, status))
+                    self.assert_one_notification(model.__name__, pk, status)
                 seen[pk] = status
+
+    def assert_one_notification(self, model, pk, status):
+        """I7: the row that reports this move exists, once. A cancel or expiry of an OPEN bounty
+        reports through its claims' rows, and the poster's own cancel notifies nobody else."""
+        if model == "Claim":
+            bounty_id = Claim.objects.get(pk=pk).bounty_id
+            keys = {
+                ClaimStatus.ACCEPTED: [f"claim-accepted:{pk}"],
+                ClaimStatus.WITHDRAWN: [f"claim-withdrawn:{pk}"],
+                ClaimStatus.REJECTED: [
+                    f"claim-rejected:{pk}", f"bounty-cancelled:{bounty_id}:{pk}", f"bounty-expired:{bounty_id}:{pk}",
+                ],
+                ClaimStatus.CANCELLED: [f"cancel-after-revocation:{bounty_id}:{pk}"],
+            }[status]
+        elif status == BountyStatus.DONE:
+            keys = [f"bounty-done:{pk}"]
+        elif status == BountyStatus.EXPIRED:
+            keys = [f"bounty-expired:{pk}"]
+        else:
+            return
+        found = Notification.objects.filter(idempotency_key__in=keys).count()
+        assert found == 1, (model, pk, status, found)
 
     @invariant()
     def i6_contact_only_between_the_accepted_pair(self):

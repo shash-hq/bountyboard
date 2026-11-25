@@ -49,13 +49,14 @@ MUTATIONS = [
     ("user lock strength in revoke_verification", "apps/accounts/moderation.py",
      r"(?<=select_for_update\()no_key=True(?=\)\.filter\(pk__in=\{actor_id, subject_id\}\)\.order_by\(\"pk\"\)\}\n    actor, subject = rows\.get\(actor_id\), rows\.get\(subject_id\)\n    # Permission)",
      "", ["apps.bounties.tests_revocation_deadlocks"]),
+    ("outbox SKIP LOCKED", "apps/bounties/outbox.py", r"skip_locked=True, ", "", ["apps.bounties.tests_outbox"]),
     ("create rate limit", VIEWS, after("bounty_create_view"), "", LIMITS),
     ("claim rate limit", VIEWS, after("bounty_claim_view"), "", LIMITS),
     ("report rate limit", VIEWS, after("bounty_report_view"), "", LIMITS),
     ("signup rate limit", "apps/accounts/views.py", after("signup_view"), "", ["apps.accounts.tests_ratelimits"]),
-    ("I2 check constraint", CONSTRAINTS,
-     r"(?s)        migrations\.AddConstraint\(\n            model_name=\"bounty\".*?(?=        migrations\.AddConstraint\(\n            model_name=\"claim\")",
-     "", DB),
+    # The latest migration that defines it: removing an earlier, superseded definition changes nothing.
+    ("I2 check constraint", "apps/bounties/migrations/0008_expired_in_accepted_claim_constraint.py",
+     r"(?s)        migrations\.AddConstraint\(.*?(?=    \]\n)", "", DB),
     ("I1 unique index", CONSTRAINTS,
      r"(?s)        migrations\.AddConstraint\(\n            model_name=\"claim\".*?(?=    \]\n)", "", DB),
 ]
