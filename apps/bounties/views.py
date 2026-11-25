@@ -239,7 +239,7 @@ def bounty_edit_view(request, pk):
     return render(
         request,
         "bounties/form.html",
-        {"form": form, "bounty": bounty, "action": "edit"},
+        {"form": form, "bounty": bounty, "action": "edit", "has_claims": bounty.claims.exists()},
     )
 
 

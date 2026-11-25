@@ -19,6 +19,12 @@
       <span class="stamp-badge stamp-open">₹ REWARD</span>
     </div>
 
+    {% if has_claims %}
+      <div class="brutal-card brutal-card--yellow">
+        <p>This bounty already has claims. You can raise the reward or extend the deadline, but the title, description and category are locked so people aren't claiming one thing and getting another. To change the scope, cancel this bounty and post a new one.</p>
+      </div>
+    {% endif %}
+
     {% if form.non_field_errors %}
       <div class="field-error" style="margin-bottom: var(--spacing-4);">
         {% for error in form.non_field_errors %}
