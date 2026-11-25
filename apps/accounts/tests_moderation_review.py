@@ -1,4 +1,7 @@
 """IdentityReview resolution and the staff role: outcomes, audit trail, races between moderators."""
+import unittest
+
+from django.db import connection
 from django.test import TransactionTestCase
 
 from apps.bounties.tests_races import in_worker, wait_until_a_lock_request_is_waiting
@@ -50,10 +53,12 @@ class ResolveReviewTests(ReviewTestCase):
         self.assertEqual(CampusVerification.objects.get(user=self.holder).revoke_reason, "VERIFICATION_INVALID")
         self.assertFalse(StudentIdentity.objects.filter(user=self.holder).exists())
 
-    def test_both_legit_typo_closes_the_review_and_changes_nothing_else(self):
-        self.resolve(ReviewResolution.BOTH_LEGIT_TYPO)
-        self.assertIsNotNone(self.active(self.newcomer))
-        self.assertIsNotNone(self.active(self.holder))
+    def test_a_typo_review_cannot_be_closed_yet_and_stays_open(self):
+        with self.assertRaises(InvalidState):
+            self.resolve(ReviewResolution.BOTH_LEGIT_TYPO)
+        self.review.refresh_from_db()
+        self.assertEqual((self.review.status, self.review.resolution), ("OPEN", None))
+        self.assertFalse(AuditEvent.objects.filter(action="IDENTITY_REVIEW_RESOLVED").exists())
         self.assertEqual(StudentIdentity.objects.get(reg_no_hmac=self.review.claimed_hmac).user, self.holder)
 
     def test_every_outcome_records_who_decided_and_why_and_one_audit_row(self):
@@ -76,7 +81,7 @@ class ResolveReviewTests(ReviewTestCase):
         self.assertEqual(self.review.status, "OPEN")
 
     def test_a_review_resolves_only_once(self):
-        self.resolve(ReviewResolution.BOTH_LEGIT_TYPO)
+        self.resolve(ReviewResolution.KEEP_EXISTING)
         with self.assertRaises(InvalidState):
             self.resolve(ReviewResolution.REASSIGN)
         self.assertEqual(StudentIdentity.objects.get(reg_no_hmac=self.review.claimed_hmac).user, self.holder)
@@ -141,6 +146,7 @@ class StaffRoleTests(ModTestCase):
         self.assertIsNone(self.student.staff_source)
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class TwoModeratorsRaceTests(TransactionTestCase):
     """Two moderators resolving the same review serialize on the user locks; the second is refused."""
 

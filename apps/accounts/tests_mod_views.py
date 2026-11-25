@@ -149,10 +149,10 @@ class ReviewAndStaffViewTests(ModViewTestCase):
 
     def test_resolving_runs_the_service_and_empties_the_queue(self):
         self.client.force_login(self.mod)
-        r = self.client.post(self.resolve_url, {"resolution": "BOTH_LEGIT_TYPO", "note": "typo"})
+        r = self.client.post(self.resolve_url, {"resolution": "KEEP_EXISTING", "note": "card checked"})
         self.assertRedirects(r, reverse("accounts:mod_reviews"))
         self.review.refresh_from_db()
-        self.assertEqual((self.review.status, self.review.resolution), ("RESOLVED", "BOTH_LEGIT_TYPO"))
+        self.assertEqual((self.review.status, self.review.resolution), ("RESOLVED", "KEEP_EXISTING"))
         self.assertContains(self.client.get(reverse("accounts:mod_reviews")), "No open reviews")
 
     def test_resolving_without_a_note_or_with_a_bad_choice_changes_nothing(self):

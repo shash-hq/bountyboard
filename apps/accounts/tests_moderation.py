@@ -1,8 +1,11 @@
 """Revoke, release identity, reveal card name: permission, audit, and lock behaviour."""
+import unittest
+
 import threading
 from datetime import timedelta
 
 from django.contrib.auth.models import Group
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.db import transaction
 from django.utils import timezone
@@ -155,6 +158,7 @@ class RevealCardNameTests(ModTestCase):
             moderation.reveal_card_name(self.mod.pk, self.student.pk, "why")
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class RevokeLocksTheSubjectRowTests(TransactionTestCase):
     """accept_claim (PR 6) will lock this same row, so holding it must block a revoke."""
 

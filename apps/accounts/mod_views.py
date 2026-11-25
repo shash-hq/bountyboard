@@ -57,10 +57,12 @@ def _user_context(subject, **extra):
         "identity": StudentIdentity.objects.filter(user=subject).first(),
         "verifications": CampusVerification.objects.filter(user=subject).order_by("-verified_at", "-pk")[:5],
         "audit": AuditEvent.objects.filter(subject=subject).select_related("actor").order_by("-created_at", "-pk")[:20],
-        "reason_form": ModReasonForm(),
-        "revoke_form": RevokeForm(),
-        "release_form": ReleaseIdentityForm(),
-        "staff_form": StaffNoteForm(),
+        # Several forms share field names; auto_id keeps every id (and its label) unique on the page.
+        "contact_form": ModReasonForm(auto_id="contact-%s"),
+        "card_form": ModReasonForm(auto_id="card-%s"),
+        "revoke_form": RevokeForm(auto_id="revoke-%s"),
+        "release_form": ReleaseIdentityForm(auto_id="release-%s"),
+        "staff_form": StaffNoteForm(auto_id="staff-%s"),
         **extra,
     }
 
@@ -158,7 +160,8 @@ def mod_reviews_view(request):
     }
     for r in reviews:
         r.holder = holders.get(r.claimed_hmac)
-    return render(request, "accounts/mod_reviews.html", {"reviews": reviews, "form": ResolveReviewForm()})
+        r.form = ResolveReviewForm(auto_id=f"review{r.pk}-%s")
+    return render(request, "accounts/mod_reviews.html", {"reviews": reviews})
 
 
 @login_required

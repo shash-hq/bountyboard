@@ -15,7 +15,7 @@ from apps.bounties.models import Bounty, BountyStatus, NotificationKind
 from apps.bounties.policies import CANCELLABLE_REVOKE_REASONS, can_moderate
 
 from .errors import InvalidState, NotPermitted
-from .identity import decrypt_card_name, hash_reg_no
+from .identity import decrypt_card_name, hash_reg_no, redact_reg_nos
 from .models import (
     AuditEvent, CampusVerification, IdentityReview, ReviewResolution, ReviewStatus, RevokeReason,
     StaffSource, StudentIdentity, User, VerificationMethod,
@@ -39,7 +39,7 @@ def _lock(actor_id, subject_id):
 
 
 def _clean_note(note: str) -> str:
-    note = (note or "").strip()
+    note = redact_reg_nos((note or "").strip())
     if len(note) > MAX_NOTE:
         raise InvalidState(f"Note is too long (max {MAX_NOTE} characters).")
     return note
@@ -235,7 +235,8 @@ def resolve_identity_review(moderator_id, review_id, resolution, note, now=None)
                        VERIFICATION_INVALID (so they must verify again properly).
     ``REASSIGN``       the newcomer is right: the holder's binding is released, rebound to the
                        newcomer, and the old holder's verification is revoked (INVALID).
-    ``BOTH_LEGIT_TYPO`` nobody is wrongly bound; the review is closed and nothing else changes.
+    ``BOTH_LEGIT_TYPO`` is refused: closing would leave the newcomer verified but unbound with no way
+                       to correct the number, so the review stays open until such a flow exists.
 
     Runs in one transaction with the users locked in ascending id (moderator, claimant and the
     current holder of the number), then the review re-read under its own lock, so two moderators
@@ -244,6 +245,8 @@ def resolve_identity_review(moderator_id, review_id, resolution, note, now=None)
     """
     if resolution not in ReviewResolution.values:
         raise InvalidState("Choose a valid resolution.")
+    if resolution == ReviewResolution.BOTH_LEGIT_TYPO:
+        raise InvalidState("A mistyped number can't be corrected yet, so this review stays open.")
     note = _clean_note(note)
     if not note:
         raise InvalidState("Say why you decided this.")
