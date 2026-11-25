@@ -48,6 +48,21 @@ def normalize_reg_no(raw: str) -> str:
     return cleaned
 
 
+def redact_reg_nos(text: str) -> str:
+    """Blank out anything in free text that could be a registration number.
+
+    Deliberately broad: any run of six or more digits, however separated, plus any word matching
+    ``REG_NO_PATTERN``. A redacted date or ticket number costs little; a stored reg no breaks the
+    promise that we keep only its hash.
+    """
+    text = re.sub(r"\d(?:[\s\-./_]*\d){5,}", "[number removed]", text)
+    return re.sub(
+        r"\w+",
+        lambda m: "[number removed]" if re.fullmatch(settings.REG_NO_PATTERN, m.group(), flags=re.ASCII) else m.group(),
+        text,
+    )
+
+
 def _hmac_key() -> bytes:
     key = settings.REG_NO_HMAC_KEY
     if not key:

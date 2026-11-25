@@ -10,7 +10,7 @@ services:
     region: singapore
     # Migrate at BUILD time: a failing migration fails the deploy and the old version keeps
     # serving, and a cold start after idle spin-down stays fast (no migrate on boot).
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+    buildCommand: pip install --require-hashes -r requirements.lock && python manage.py collectstatic --noinput && python manage.py migrate --noinput
     # 1 worker x 4 threads: the 0.1 CPU / 512 MB instance is small, and a single process keeps the
     # in-process rate-limit counters correct (see settings.RATE_LIMITS).
     startCommand: gunicorn config.wsgi:application --workers 1 --threads 4 --timeout 60 --access-logfile -
@@ -34,6 +34,10 @@ services:
       - key: REG_NO_HMAC_KEY # >= 32 random chars, distinct from SECRET_KEY
         sync: false
       - key: CARD_NAME_KEYS # comma-separated Fernet keys, first one encrypts
+        sync: false
+      # Shared with the GitHub Actions tick (repository secrets TICK_URL, TICK_SECRET). At least 32
+      # characters, e.g. `openssl rand -hex 32`. Unset disables /internal/tick: no expiry, no retries.
+      - key: TICK_SECRET
         sync: false
       # Supabase Supavisor SESSION-mode pooler (port 5432, IPv4); the direct host is IPv6-only.
       - key: DATABASE_URL

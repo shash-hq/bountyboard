@@ -240,7 +240,9 @@ class ResolveReviewForm(forms.Form):
         from .models import ReviewResolution
 
         super().__init__(*args, **kwargs)
-        self.fields["resolution"].choices = ReviewResolution.choices
+        self.fields["resolution"].choices = [
+            c for c in ReviewResolution.choices if c[0] != ReviewResolution.BOTH_LEGIT_TYPO
+        ]
 
 
 class StaffNoteForm(forms.Form):

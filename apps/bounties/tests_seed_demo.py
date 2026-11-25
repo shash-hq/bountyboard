@@ -81,6 +81,11 @@ class SeedDemoScopeTests(TestCase):
         pw = out.split("demo users: ")[1].split()[0]
         self.assertTrue(User.objects.get(username="priya_cs").check_password(pw))
 
+    def test_verified_count_excludes_the_moderator(self):
+        out = StringIO()
+        call_command("seed_demo", stdout=out, allow_non_debug=True)
+        self.assertIn(f"Verified {len(SEED_USERS) - 1} student users.", out.getvalue())
+
     def test_explicit_password_option(self):
         seed(password="chosen-Pass-123")
         self.assertTrue(User.objects.get(username="priya_cs").check_password("chosen-Pass-123"))

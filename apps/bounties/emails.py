@@ -4,18 +4,29 @@ Only kinds listed in ``RENDERERS`` are ever emailed; everything else is in-app o
 budget is 300/day, and verification and password-reset mail comes first).
 """
 
+from django.utils import timezone
+
+from .models import ClaimStatus
 from .notifications import absolute_url
+
+
+class Obsolete(Exception):
+    """The event this row reports no longer holds, so the email must not go out."""
 
 
 def claim_accepted(n):
     claim = n.claim
+    # Read at send time: a retried email must not hand over contact after the claim was cancelled.
+    if claim is None or claim.status != ClaimStatus.ACCEPTED:
+        raise Obsolete("the claim is no longer accepted")
     claimant, poster, bounty = claim.claimant, claim.bounty.poster, claim.bounty
-    subject = f"[Bounty Board] Your claim on '{bounty.title}' was accepted"
+    title = " ".join(bounty.title.split())  # a line break in a header makes Django refuse to send
+    subject = f"[Bounty Board] Your claim on '{title}' was accepted"
     body = (
         f"Hi {claimant.username},\n\n"
         f"Your claim on '{bounty.title}' was accepted by {poster.username}.\n\n"
         f"Agreed reward: ₹{bounty.reward}\n"
-        f"Deadline: {bounty.deadline.strftime('%Y-%m-%d %H:%M')}\n\n"
+        f"Deadline: {timezone.localtime(bounty.deadline).strftime('%Y-%m-%d %H:%M')}\n\n"
         f"Poster contact email: {poster.email}\n"
         + (f"Poster contact handle: {poster.contact_handle}\n" if poster.contact_handle else "")
         + "\nNext steps:\n"

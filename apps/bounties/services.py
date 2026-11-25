@@ -23,12 +23,15 @@ logger = logging.getLogger(__name__)
 def _lock_bounty(bounty_id: int) -> Bounty:
     """Lock the bounty row (FIRST in the fixed lock order: bounty -> claims -> user).
 
+    FOR NO KEY UPDATE, here and on user rows: a revocation inserts notifications whose foreign keys
+    point at the bounty and the other party, and those checks would deadlock against FOR UPDATE.
+
     Every transition that touches a bounty or one of its claims takes this lock before
     anything else and re-reads state afterwards, so concurrent transitions on the same
     bounty are serialized and each one validates against the committed result of the last.
     """
     try:
-        return Bounty.objects.select_for_update().get(id=bounty_id)
+        return Bounty.objects.select_for_update(no_key=True).get(id=bounty_id)
     except Bounty.DoesNotExist:
         raise InvalidTransition("Bounty does not exist.")
 
@@ -147,7 +150,7 @@ def _require_both_campus_verified(poster_id: int, claimant_id: int) -> None:
     contact released to someone whose verification was revoked before the accept committed.
     """
     User = get_user_model()
-    locked = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={poster_id, claimant_id}).order_by("pk")}
+    locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={poster_id, claimant_id}).order_by("pk")}
     poster, claimant = locked.get(poster_id), locked.get(claimant_id)
     now = timezone.now()
     if poster is None or not poster.is_active or not is_campus_verified(poster, now):
@@ -207,7 +210,9 @@ def accept_claim(claim_id: int, user) -> Claim:
         bounty.save(update_fields=["status", "accepted_claim", "updated_at"])
 
         # Reject all other PENDING claims on this bounty
-        Claim.objects.filter(id__in=[c.id for c in other_claims]).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in other_claims]).update(
+            status=ClaimStatus.REJECTED, updated_at=timezone.now()
+        )
 
         # I7: the outbox rows commit with the transition. Acceptance is the one kind that is emailed
         # (the claimant needs the poster's contact, and email is scarce); the rest are in-app only.
@@ -308,11 +313,11 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
         bounty.save(update_fields=["status", "updated_at"])
         # Also reject any pending claims, in the same transaction, under the bounty lock
         pending = list(
-            Claim.objects.select_for_update().select_related("claimant")
+            Claim.objects.select_for_update(of=("self",)).select_related("claimant")
             .filter(bounty=bounty, status=ClaimStatus.PENDING)
             .order_by("id")
         )
-        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED, updated_at=timezone.now())
         for c in pending:
             inbox.notify(
                 c.claimant, NotificationKind.BOUNTY_CANCELLED,
@@ -343,7 +348,7 @@ def cancel_after_counterparty_revocation(bounty_id: int, user) -> Bounty:
 
         # Users last, ascending id. The returned rows are the locked, fresh ones.
         User = get_user_model()
-        locked = {u.pk: u for u in User.objects.select_for_update().filter(
+        locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(
             pk__in={bounty.poster_id, claim.claimant_id}).order_by("pk")}
         bounty.accepted_claim = claim
         claim.claimant = locked[claim.claimant_id]
@@ -383,12 +388,12 @@ def expire_bounty(bounty_id: int, now=None) -> bool:
         if bounty.status != BountyStatus.OPEN or bounty.deadline > now:
             return False
         pending = list(
-            Claim.objects.select_for_update().select_related("claimant")
+            Claim.objects.select_for_update(of=("self",)).select_related("claimant")
             .filter(bounty=bounty, status=ClaimStatus.PENDING).order_by("id")
         )
         bounty.status = BountyStatus.EXPIRED
         bounty.save(update_fields=["status", "updated_at"])
-        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED, updated_at=now)
         inbox.notify(
             bounty.poster, NotificationKind.BOUNTY_EXPIRED,
             f"'{bounty.title}' expired with its deadline. Post it again if you still need it.",

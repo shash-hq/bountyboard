@@ -7,7 +7,7 @@ from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.bounties.models import Bounty, Claim
+from apps.bounties.models import Bounty, Claim, ClaimStatus
 from apps.bounties import emails, inbox, outbox
 from apps.bounties.models import NotificationKind
 from apps.bounties.notifications import absolute_url
@@ -25,6 +25,8 @@ class EmailLinkTests(TestCase):
             reward=100, deadline=timezone.now() + timedelta(days=2),
         )
         self.claim = Claim.objects.create(bounty=self.bounty, claimant=self.claimant, message="m" * 12)
+        Claim.objects.filter(pk=self.claim.pk).update(status=ClaimStatus.ACCEPTED)  # only these are emailed
+        self.claim.refresh_from_db()
 
     def body(self):
         from django.db import transaction

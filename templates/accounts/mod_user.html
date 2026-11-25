@@ -39,13 +39,13 @@
     <h2>Reveal contact details</h2>
     <form method="post" action="{% url 'accounts:mod_reveal_contact' subject.pk %}" novalidate>
       {% csrf_token %}
-      {{ reason_form.reason.label_tag }} {{ reason_form.reason }}
+      {{ contact_form.reason.label_tag }} {{ contact_form.reason }}
       <button type="submit" class="btn btn-sm">REVEAL CONTACT</button>
     </form>
     <h2>Reveal name on the ID card</h2>
     <form method="post" action="{% url 'accounts:mod_reveal_card_name' subject.pk %}" novalidate>
       {% csrf_token %}
-      {{ reason_form.reason.label_tag }} {{ reason_form.reason }}
+      {{ card_form.reason.label_tag }} {{ card_form.reason }}
       <button type="submit" class="btn btn-sm">REVEAL CARD NAME</button>
     </form>
   </div>
