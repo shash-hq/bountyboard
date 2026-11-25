@@ -23,6 +23,7 @@ class BountyStatus(models.TextChoices):
     CLAIMED = "CLAIMED", "CLAIMED"
     DONE = "DONE", "DONE"
     CANCELLED = "CANCELLED", "CANCELLED"
+    EXPIRED = "EXPIRED", "EXPIRED"  # set by services.expire_bounty (the sweeper); terminal
 
 
 class ClaimStatus(models.TextChoices):
@@ -122,8 +123,14 @@ class Bounty(models.Model):
 
     @property
     def is_expired(self) -> bool:
-        """Computed property: true if deadline has passed and bounty is still marked OPEN."""
-        return self.status == BountyStatus.OPEN and self.deadline <= timezone.now()
+        """Expired: closed by the sweeper (EXPIRED), or past its deadline and not yet swept.
+
+        The second clause is what makes expiry correct on a sleeping instance: it is time-based, so a
+        missed tick can never keep an overdue bounty claimable.
+        """
+        return self.status == BountyStatus.EXPIRED or (
+            self.status == BountyStatus.OPEN and self.deadline <= timezone.now()
+        )
 
     @property
     def display_status(self) -> str:

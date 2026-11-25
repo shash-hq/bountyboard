@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -14,6 +16,8 @@ from .policies import (
     is_campus_verified,
     open_bounty_cap,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _lock_bounty(bounty_id: int) -> Bounty:
@@ -363,6 +367,57 @@ def cancel_after_counterparty_revocation(bounty_id: int, user) -> Bounty:
             idempotency_key=f"cancel-after-revocation:{bounty.pk}:{claim.pk}", bounty=bounty,
         )
     return bounty
+
+
+def expire_bounty(bounty_id: int, now=None) -> bool:
+    """Close one overdue OPEN bounty: OPEN -> EXPIRED, pending claims -> REJECTED, notify everyone.
+
+    Decision 4: expiry is a real state, set here rather than inferred. Lock order is bounty, then
+    its claims (no user rows are needed). State is re-read under the lock, so a bounty that was
+    accepted, cancelled or extended since the sweeper looked at it is left alone. Returns whether
+    it expired the bounty. Safe to run repeatedly and from several tickers at once.
+    """
+    now = now or timezone.now()
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
+        if bounty.status != BountyStatus.OPEN or bounty.deadline > now:
+            return False
+        pending = list(
+            Claim.objects.select_for_update().select_related("claimant")
+            .filter(bounty=bounty, status=ClaimStatus.PENDING).order_by("id")
+        )
+        bounty.status = BountyStatus.EXPIRED
+        bounty.save(update_fields=["status", "updated_at"])
+        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED)
+        inbox.notify(
+            bounty.poster, NotificationKind.BOUNTY_EXPIRED,
+            f"'{bounty.title}' expired with its deadline. Post it again if you still need it.",
+            f"bounty-expired:{bounty.pk}", bounty=bounty, now=now,
+        )
+        for c in pending:
+            inbox.notify(
+                c.claimant, NotificationKind.BOUNTY_EXPIRED,
+                f"'{bounty.title}' expired before the poster chose anyone, so your claim was closed.",
+                f"bounty-expired:{bounty.pk}:{c.pk}", bounty=bounty, claim=c, now=now,
+            )
+    return True
+
+
+def sweep_expired(now=None, limit=50) -> int:
+    """Expire up to ``limit`` overdue bounties, oldest deadline first. One transaction per bounty, so
+    a failure on one neither blocks nor rolls back the others. Returns how many were expired."""
+    now = now or timezone.now()
+    ids = list(
+        Bounty.objects.filter(status=BountyStatus.OPEN, deadline__lte=now)
+        .order_by("deadline", "pk").values_list("pk", flat=True)[:limit]
+    )
+    done = 0
+    for pk in ids:
+        try:
+            done += expire_bounty(pk, now)
+        except Exception:  # noqa: BLE001 - keep sweeping; the next tick retries this one
+            logger.exception("Could not expire bounty %s", pk)
+    return done
 
 
 def hide_bounty(bounty_id: int, user, is_hidden: bool = True) -> Bounty:
