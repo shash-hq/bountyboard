@@ -7,16 +7,18 @@ compatible with foreign-key checks.
 """
 import time
 import unittest
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 from django.test import TransactionTestCase
+from django.utils import timezone
 
 from apps.accounts import moderation
 from apps.accounts.testing import create_verified_user
 from apps.bounties import services
 from apps.bounties.exceptions import NotPermitted
-from apps.bounties.models import BountyStatus
+from apps.bounties.models import BountyStatus, ClaimStatus
 from apps.bounties.tests_races import in_worker, make_bounty, make_claim, wait_until_a_lock_request_is_waiting
 
 User = get_user_model()
@@ -38,13 +40,24 @@ class RevocationDeadlockTests(TransactionTestCase):
     def revoke(self, user, mod=None):
         return moderation.revoke_verification((mod or self.mod).pk, user.pk, "POLICY_VIOLATION")
 
+    def wait_until_blocked_or_finished(self, thread):
+        """Either it blocks on a row this transaction holds, or it has nothing to wait for and ends."""
+        deadline = time.monotonic() + 10
+        while thread.is_alive() and time.monotonic() < deadline:
+            try:
+                return wait_until_a_lock_request_is_waiting(timeout=0.2)
+            except AssertionError:
+                pass
+        if thread.is_alive():
+            self.fail("the worker neither blocked on a row we hold nor finished")
+
     def revoke_claimant_while(self, fn):
-        """``fn`` starts and blocks on the claimant's row; then the claimant is revoked and committed."""
+        """``fn`` runs (as far as it can) while the claimant's row is held; then the claimant is revoked."""
         thread, outcome = in_worker(fn)
         with transaction.atomic():
             User.objects.select_for_update(no_key=True).get(pk=self.claimant.pk)
             thread.start()
-            wait_until_a_lock_request_is_waiting()
+            self.wait_until_blocked_or_finished(thread)
             self.revoke(self.claimant)
         thread.join(timeout=30)
         self.assertFalse(thread.is_alive(), "worker hung")
@@ -69,14 +82,30 @@ class RevocationDeadlockTests(TransactionTestCase):
         with transaction.atomic():
             self.revoke(self.poster)
             thread.start()
-            # Either it finishes (nothing to wait for) or it blocks on a row this transaction holds.
-            deadline = time.monotonic() + 10
-            while thread.is_alive() and time.monotonic() < deadline:
-                try:
-                    wait_until_a_lock_request_is_waiting(timeout=0.2)
-                    break
-                except AssertionError:
-                    pass
+            self.wait_until_blocked_or_finished(thread)
         thread.join(timeout=30)
         self.assertFalse(thread.is_alive(), "worker hung")
         self.assertNotIn("err", outcome)
+
+    def bounty_claimed_on_by_the_pair(self):
+        """A third person's bounty with pending claims from both, the lower user id claiming first."""
+        third = create_verified_user("third", "third@example.org", campus=True)
+        bounty = make_bounty(third)
+        make_claim(bounty, self.poster)
+        make_claim(bounty, self.claimant)
+        return bounty, third
+
+    def test_cancelling_a_bounty_against_a_revocation_of_one_of_its_claimants(self):
+        bounty, third = self.bounty_claimed_on_by_the_pair()
+        outcome = self.revoke_claimant_while(lambda: services.cancel_bounty(bounty.pk, third))
+        self.assertNotIn("err", outcome)
+        bounty.refresh_from_db()
+        self.assertEqual(bounty.status, BountyStatus.CANCELLED)
+        self.assertEqual(set(bounty.claims.values_list("status", flat=True)), {ClaimStatus.REJECTED})
+
+    def test_expiring_a_bounty_against_a_revocation_of_one_of_its_claimants(self):
+        bounty, _ = self.bounty_claimed_on_by_the_pair()
+        later = timezone.now() + timedelta(days=30)
+        outcome = self.revoke_claimant_while(lambda: services.expire_bounty(bounty.pk, later))
+        self.assertNotIn("err", outcome)
+        self.assertIs(outcome.get("ok"), True, outcome)

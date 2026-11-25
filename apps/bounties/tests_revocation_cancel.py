@@ -44,6 +44,7 @@ class Base(TestCase):
         self.bounty = mkbounty(self.poster)
         self.claim = mkclaim(self.bounty, self.claimant)
         services.accept_claim(self.claim.pk, self.poster)
+        Notification.objects.all().delete()  # drop the transition's own rows; these tests count revocation ones
 
     def revoke(self, user, reason="POLICY_VIOLATION"):
         return moderation.revoke_verification(self.mod.pk, user.pk, reason)

@@ -58,7 +58,7 @@ class AcceptEmailUsesTheProfileTests(TestCase):
     def accept(self):
         with self.captureOnCommitCallbacks(execute=True):
             services.accept_claim(self.claim.pk, self.poster)
-        return [m for m in mail.outbox if "ACCEPTED" in m.subject][-1]
+        return [m for m in mail.outbox if "accepted" in m.subject][-1]
 
     def test_the_claimant_is_sent_the_posters_email_and_handle_only(self):
         msg = self.accept()
@@ -75,11 +75,14 @@ class AcceptEmailUsesTheProfileTests(TestCase):
         self.assertIn("poster.mail@gmail.com", body)
         self.assertNotIn("Poster Contact Handle", body)
 
-    def test_the_pitch_email_to_the_poster_carries_no_claimant_contact(self):
-        from apps.bounties.notifications import send_claim_received_notification
+    def test_the_pitch_notice_to_the_poster_carries_no_claimant_contact_and_sends_no_email(self):
+        from apps.bounties.models import Notification
 
+        other = create_verified_user("pitcher", "pitcher.mail@gmail.com", PW, contact_handle="WA-PITCH-1")
         mail.outbox.clear()
-        send_claim_received_notification(self.claim)
-        body = mail.outbox[0].body
-        self.assertNotIn("claimant.mail@gmail.com", body)
-        self.assertNotIn("WA-CLAIMANT-7777", body)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.create_claim(self.bounty.pk, other, "I can do this by Friday.")
+        note = Notification.objects.get(recipient=self.poster, kind="CLAIM_RECEIVED")
+        self.assertNotIn("pitcher.mail@gmail.com", note.message)
+        self.assertNotIn("WA-PITCH-1", note.message)
+        self.assertEqual(mail.outbox, [])  # email is reserved for acceptance

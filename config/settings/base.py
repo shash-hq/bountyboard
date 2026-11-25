@@ -61,6 +61,14 @@ OPEN_BOUNTY_CAP_CAMPUS_VERIFIED = env.int("OPEN_BOUNTY_CAP_CAMPUS_VERIFIED", def
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 
+# Outbox email delivery. The provider's budget is 300/day and account verification and password reset
+# come first, so notification mail is capped well below it.
+OUTBOX_EMAIL_DAILY_CAP = env.int("OUTBOX_EMAIL_DAILY_CAP", default=150)
+OUTBOX_MAX_ATTEMPTS = env.int("OUTBOX_MAX_ATTEMPTS", default=6)
+OUTBOX_DRAIN_LIMIT = env.int("OUTBOX_DRAIN_LIMIT", default=20)
+# Shared secret for POST /internal/tick (header X-Tick-Secret). Empty disables the endpoint (404).
+TICK_SECRET = env("TICK_SECRET", default="")
+
 # Application definition
 DJANGO_APPS = [
     "whitenoise.runserver_nostatic",
@@ -186,6 +194,8 @@ EMAIL_VERIFICATION_TTL_HOURS = 24
 
 # Email backend default
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Seconds per SMTP socket operation. Without it a stalled server holds the request or the tick open.
+EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="BountyBoard <notifications@bountyboard.campus>")
 
 # --- Rate limiting -------------------------------------------------------------------

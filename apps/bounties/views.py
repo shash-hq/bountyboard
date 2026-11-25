@@ -5,6 +5,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
@@ -13,7 +14,6 @@ from config.http import safe_referer
 
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
-from .notifications import send_claim_received_notification
 from .exceptions import DomainError
 from .policies import (
     can_moderate,
@@ -79,6 +79,11 @@ def board_view(request):
         queryset = queryset.filter(status=BountyStatus.DONE)
     elif status == "CANCELLED":
         queryset = queryset.filter(status=BountyStatus.CANCELLED)
+    elif status == "EXPIRED":
+        # Swept ones, and overdue ones the sweeper hasn't reached: both carry the EXPIRED badge.
+        queryset = queryset.filter(
+            Q(status=BountyStatus.EXPIRED) | Q(status=BountyStatus.OPEN, deadline__lte=timezone.now())
+        )
 
     if sort == "reward_high":
         queryset = queryset.order_by("-reward", "-created_at")
@@ -298,7 +303,6 @@ def bounty_claim_view(request, pk):
                 request.user,
                 message=form.cleaned_data["message"],
             )
-            send_claim_received_notification(claim)
             messages.success(
                 request,
                 f"Your claim on '{bounty.title}' was submitted! The poster will review it. If they accept, you'll both see each other's contact details.",

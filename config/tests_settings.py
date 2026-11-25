@@ -40,6 +40,12 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
                 if saved[m] is not None:
                     sys.modules[m] = saved[m]
 
+    def test_tick_secret_is_optional_but_a_short_one_refuses_to_boot(self):
+        self.assertEqual(self.load().TICK_SECRET, "")  # unset: the endpoint is simply disabled
+        self.assertEqual(self.load(TICK_SECRET="t" * 40).TICK_SECRET, "t" * 40)
+        with self.assertRaises(ImproperlyConfigured):
+            self.load(TICK_SECRET="short")
+
     def test_production_never_uses_the_fast_test_hasher(self):
         """config.settings.test swaps in MD5 for speed; that must stay confined to the test settings."""
         for module in ("config.settings.base", "config.settings.dev", "config.settings.prod"):
@@ -47,6 +53,9 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
         self.assertEqual(
             self.load("config.settings.test").PASSWORD_HASHERS, ["django.contrib.auth.hashers.MD5PasswordHasher"]
         )
+
+    def test_smtp_calls_are_bounded_in_production(self):
+        self.assertEqual(self.load(EMAIL_URL="smtp+tls://u:p@smtp.example.com:587").EMAIL_TIMEOUT, 10)
 
     def test_valid_environment_boots(self):
         s = self.load()
