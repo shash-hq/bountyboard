@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.accounts import campus
 from apps.accounts.models import CampusVerification
 from apps.bounties.models import Bounty, BountyStatus, Category, Claim, ClaimStatus
-from apps.bounties.services import accept_claim
+from apps.bounties.services import accept_claim, mark_bounty_done
 
 User = get_user_model()
 
@@ -412,6 +412,7 @@ class Command(BaseCommand):
         ]
 
         created_bounties = []
+        finished = []  # specs meant to end up DONE; they get there through the services below
         for spec in bounties_specs:
             poster_user = users[spec["poster"]]
             bounty = Bounty(
@@ -423,6 +424,11 @@ class Command(BaseCommand):
                 status=spec["status"],
                 description=spec["description"],
             )
+            if spec["status"] == BountyStatus.DONE:
+                # A DONE bounty needs an accepted claim (I2), which needs a live OPEN bounty first.
+                bounty.status = BountyStatus.OPEN
+                bounty.deadline = now + timedelta(days=1)
+                finished.append((bounty, spec["deadline"]))
             # Bypass validation for expired seed data
             bounty.save()
             created_bounties.append(bounty)
@@ -464,8 +470,20 @@ class Command(BaseCommand):
             status=ClaimStatus.PENDING,
         )
         accept_claim(c_done.id, users["ananya_design"])
-        b_done.refresh_from_db()
-        b_done.status = BountyStatus.DONE
-        b_done.save(update_fields=["status"])
+        mark_bounty_done(b_done.id, users["ananya_design"])
+
+        # 4. The bounties that were finished in the past.
+        for bounty, past_deadline in finished:
+            helper = users["priya_cs" if bounty.poster != users["priya_cs"] else "arjun_ece"]
+            claim = Claim.objects.create(
+                bounty=bounty,
+                claimant=helper,
+                message="I have done this before and can finish it quickly.",
+            )
+            accept_claim(claim.id, bounty.poster)
+            mark_bounty_done(bounty.id, bounty.poster)
+            bounty.refresh_from_db()
+            bounty.deadline = past_deadline
+            bounty.save(update_fields=["deadline", "updated_at"])
 
         self.stdout.write(self.style.SUCCESS("Demo database successfully seeded with 6 students, 1 moderator, 25 bounties, and realistic claims!"))
