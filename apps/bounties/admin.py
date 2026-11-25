@@ -14,8 +14,31 @@ def unhide_bounties(modeladmin, request, queryset):
     messages.success(request, f"{count} bounties made visible.")
 
 
+class ServiceOwnedAdmin(admin.ModelAdmin):
+    """Admin for rows whose state only the services may write (invariant I5).
+
+    - `service_fields` are read-only.
+    - No "Add" page: creating here would skip the service's checks (open-bounty cap, claimable bounty).
+    - A change writes only the edited columns. A full-row save would write back the status read when
+      the request started, silently undoing a transition that committed in between.
+    """
+
+    service_fields: tuple = ()
+
+    def get_readonly_fields(self, request, obj=None):
+        return [*super().get_readonly_fields(request, obj), *self.service_fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        concrete = {f.name for f in obj._meta.concrete_fields}
+        obj.save(update_fields=[*(n for n in form.changed_data if n in concrete), "updated_at"])
+
+
 @admin.register(Bounty)
-class BountyAdmin(admin.ModelAdmin):
+class BountyAdmin(ServiceOwnedAdmin):
+    service_fields = ("status", "accepted_claim")
     list_display = [
         "title",
         "poster",
@@ -35,7 +58,9 @@ class BountyAdmin(admin.ModelAdmin):
 
 
 @admin.register(Claim)
-class ClaimAdmin(admin.ModelAdmin):
+class ClaimAdmin(ServiceOwnedAdmin):
+    # bounty and claimant too: moving an accepted claim would break I2, and re-pointing one would break I8.
+    service_fields = ("status", "bounty", "claimant")
     list_display = ["id", "bounty", "claimant", "status", "created_at"]
     list_filter = ["status", "created_at"]
     search_fields = ["claimant__username", "bounty__title", "message"]
