@@ -66,6 +66,8 @@ VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
 OUTBOX_EMAIL_DAILY_CAP = env.int("OUTBOX_EMAIL_DAILY_CAP", default=150)
 OUTBOX_MAX_ATTEMPTS = env.int("OUTBOX_MAX_ATTEMPTS", default=6)
 OUTBOX_DRAIN_LIMIT = env.int("OUTBOX_DRAIN_LIMIT", default=20)
+# Shared secret for POST /internal/tick (header X-Tick-Secret). Empty disables the endpoint (404).
+TICK_SECRET = env("TICK_SECRET", default="")
 
 # Application definition
 DJANGO_APPS = [

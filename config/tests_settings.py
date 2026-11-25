@@ -40,6 +40,12 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
                 if saved[m] is not None:
                     sys.modules[m] = saved[m]
 
+    def test_tick_secret_is_optional_but_a_short_one_refuses_to_boot(self):
+        self.assertEqual(self.load().TICK_SECRET, "")  # unset: the endpoint is simply disabled
+        self.assertEqual(self.load(TICK_SECRET="t" * 40).TICK_SECRET, "t" * 40)
+        with self.assertRaises(ImproperlyConfigured):
+            self.load(TICK_SECRET="short")
+
     def test_valid_environment_boots(self):
         s = self.load()
         self.assertFalse(s.DEBUG)

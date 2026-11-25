@@ -18,6 +18,9 @@ PUBLIC_ROUTE_NAMES = {
     "accounts:verify_email", "accounts:resend_verification",
     "accounts:password_reset", "accounts:password_reset_done",
     "accounts:password_reset_confirm", "accounts:password_reset_complete",
+    # Machine endpoint: no login, but it 404s without TICK_SECRET and 403s without the right header
+    # (see bounties/tests_tick.py).
+    "tick",
 }
 
 
