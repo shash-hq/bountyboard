@@ -5,6 +5,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
@@ -78,6 +79,11 @@ def board_view(request):
         queryset = queryset.filter(status=BountyStatus.DONE)
     elif status == "CANCELLED":
         queryset = queryset.filter(status=BountyStatus.CANCELLED)
+    elif status == "EXPIRED":
+        # Swept ones, and overdue ones the sweeper hasn't reached: both carry the EXPIRED badge.
+        queryset = queryset.filter(
+            Q(status=BountyStatus.EXPIRED) | Q(status=BountyStatus.OPEN, deadline__lte=timezone.now())
+        )
 
     if sort == "reward_high":
         queryset = queryset.order_by("-reward", "-created_at")
