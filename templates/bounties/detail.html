@@ -118,6 +118,8 @@
                     <span class="stamp-badge stamp-cancelled">REJECTED</span>
                   {% elif c.status == 'WITHDRAWN' %}
                     <span class="stamp-badge stamp-expired">WITHDRAWN</span>
+                  {% elif c.status == 'CANCELLED' %}
+                    <span class="stamp-badge stamp-cancelled">CANCELLED</span>
                   {% endif %}
                 </div>
               </div>
