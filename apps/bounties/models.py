@@ -78,7 +78,9 @@ class Bounty(models.Model):
     )
     accepted_claim = models.OneToOneField(
         "Claim",
-        on_delete=models.SET_NULL,
+        # RESTRICT, not SET_NULL: nulling the pointer would break I2 on a CLAIMED or DONE bounty.
+        # Deleting the bounty itself (claim cascades with it) is still allowed.
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="accepted_for_bounty",
@@ -96,6 +98,17 @@ class Bounty(models.Model):
         verbose_name_plural = "Bounties"
         permissions = [
             ("moderate", "Can moderate bounties and reports"),
+        ]
+        constraints = [
+            # I2, the part one row can express. That the claim is ACCEPTED and belongs to this
+            # bounty spans two tables, so the services stay responsible for it.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status__in=[BountyStatus.CLAIMED, BountyStatus.DONE], accepted_claim__isnull=False)
+                    | models.Q(status__in=[BountyStatus.OPEN, BountyStatus.CANCELLED], accepted_claim__isnull=True)
+                ),
+                name="accepted_claim_iff_claimed_or_done",
+            ),
         ]
 
     def __str__(self):
@@ -175,7 +188,13 @@ class Claim(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["bounty", "claimant"], name="unique_bounty_claimant"
-            )
+            ),
+            # I1
+            models.UniqueConstraint(
+                fields=["bounty"],
+                condition=models.Q(status=ClaimStatus.ACCEPTED),
+                name="one_accepted_claim_per_bounty",
+            ),
         ]
 
     def __str__(self):

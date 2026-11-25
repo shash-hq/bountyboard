@@ -1,8 +1,11 @@
 """I9: contact is exchanged only between two campus-verified users, checked under the user locks."""
+import unittest
+
 from datetime import timedelta
 
 from django.contrib.auth.models import Group
 from django.core import mail
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.db import transaction
 from django.urls import reverse
@@ -104,6 +107,7 @@ class GatingTests(TestCase):
         self.assert_untouched(c)
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class RevokeVersusAcceptRaceTests(TransactionTestCase):
     """Never release contact to someone whose verification was revoked before the accept committed.
 

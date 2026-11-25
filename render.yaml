@@ -10,7 +10,7 @@ services:
     region: singapore
     # Migrate at BUILD time: a failing migration fails the deploy and the old version keeps
     # serving, and a cold start after idle spin-down stays fast (no migrate on boot).
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+    buildCommand: pip install --require-hashes -r requirements.lock && python manage.py collectstatic --noinput && python manage.py migrate --noinput
     # 1 worker x 4 threads: the 0.1 CPU / 512 MB instance is small, and a single process keeps the
     # in-process rate-limit counters correct (see settings.RATE_LIMITS).
     startCommand: gunicorn config.wsgi:application --workers 1 --threads 4 --timeout 60 --access-logfile -

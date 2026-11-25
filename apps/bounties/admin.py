@@ -1,5 +1,5 @@
 from django.contrib import admin, messages
-from .models import Bounty, BountyStatus, Claim, Report
+from .models import Bounty, Claim, Report
 
 
 @admin.action(description="Hide selected bounties from public board")
@@ -14,14 +14,31 @@ def unhide_bounties(modeladmin, request, queryset):
     messages.success(request, f"{count} bounties made visible.")
 
 
-@admin.action(description="Mark selected bounties as DONE")
-def mark_bounties_done(modeladmin, request, queryset):
-    count = queryset.update(status=BountyStatus.DONE)
-    messages.success(request, f"{count} bounties marked as DONE.")
+class ServiceOwnedAdmin(admin.ModelAdmin):
+    """Admin for rows whose state only the services may write (invariant I5).
+
+    - `service_fields` are read-only.
+    - No "Add" page: creating here would skip the service's checks (open-bounty cap, claimable bounty).
+    - A change writes only the edited columns. A full-row save would write back the status read when
+      the request started, silently undoing a transition that committed in between.
+    """
+
+    service_fields: tuple = ()
+
+    def get_readonly_fields(self, request, obj=None):
+        return [*super().get_readonly_fields(request, obj), *self.service_fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        concrete = {f.name for f in obj._meta.concrete_fields}
+        obj.save(update_fields=[*(n for n in form.changed_data if n in concrete), "updated_at"])
 
 
 @admin.register(Bounty)
-class BountyAdmin(admin.ModelAdmin):
+class BountyAdmin(ServiceOwnedAdmin):
+    service_fields = ("status", "accepted_claim")
     list_display = [
         "title",
         "poster",
@@ -35,13 +52,15 @@ class BountyAdmin(admin.ModelAdmin):
     list_filter = ["status", "category", "is_hidden", "created_at"]
     search_fields = ["title", "description", "poster__username", "poster__email"]
     prepopulated_fields = {"slug": ("title",)}
-    actions = [hide_bounties, unhide_bounties, mark_bounties_done]
+    actions = [hide_bounties, unhide_bounties]
     readonly_fields = ["created_at", "updated_at"]
     date_hierarchy = "created_at"
 
 
 @admin.register(Claim)
-class ClaimAdmin(admin.ModelAdmin):
+class ClaimAdmin(ServiceOwnedAdmin):
+    # bounty and claimant too: moving an accepted claim would break I2, and re-pointing one would break I8.
+    service_fields = ("status", "bounty", "claimant")
     list_display = ["id", "bounty", "claimant", "status", "created_at"]
     list_filter = ["status", "created_at"]
     search_fields = ["claimant__username", "bounty__title", "message"]

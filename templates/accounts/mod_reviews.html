@@ -6,7 +6,7 @@
 <div class="form-center-container">
   <div class="brutal-card">
     <h1 class="page-title">IDENTITY REVIEWS</h1>
-    <p>Someone verified with a registration number that is already bound to another account. They were verified anyway, without a binding; decide who is right.</p>
+    <p>Someone verified with a registration number that is already bound to another account. They were verified anyway, without a binding; decide who is right. If it is only a typing mistake, leave the review open: correcting a number isn't supported yet.</p>
     <p><a href="{% url 'accounts:mod_index' %}">Back to lookup</a></p>
   </div>
   {% for r in reviews %}
@@ -18,8 +18,8 @@
       </p>
       <form method="post" action="{% url 'accounts:mod_resolve_review' r.pk %}" novalidate>
         {% csrf_token %}
-        {{ form.resolution.label_tag }} {{ form.resolution }}
-        {{ form.note.label_tag }} {{ form.note }}
+        {{ r.form.resolution.label_tag }} {{ r.form.resolution }}
+        {{ r.form.note.label_tag }} {{ r.form.note }}
         <button type="submit" class="btn btn-sm btn-primary">RESOLVE</button>
       </form>
     </div>

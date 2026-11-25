@@ -23,12 +23,15 @@ logger = logging.getLogger(__name__)
 def _lock_bounty(bounty_id: int) -> Bounty:
     """Lock the bounty row (FIRST in the fixed lock order: bounty -> claims -> user).
 
+    FOR NO KEY UPDATE, here and on user rows: a revocation inserts notifications whose foreign keys
+    point at the bounty and the other party, and those checks would deadlock against FOR UPDATE.
+
     Every transition that touches a bounty or one of its claims takes this lock before
     anything else and re-reads state afterwards, so concurrent transitions on the same
     bounty are serialized and each one validates against the committed result of the last.
     """
     try:
-        return Bounty.objects.select_for_update().get(id=bounty_id)
+        return Bounty.objects.select_for_update(no_key=True).get(id=bounty_id)
     except Bounty.DoesNotExist:
         raise InvalidTransition("Bounty does not exist.")
 
@@ -147,7 +150,7 @@ def _require_both_campus_verified(poster_id: int, claimant_id: int) -> None:
     contact released to someone whose verification was revoked before the accept committed.
     """
     User = get_user_model()
-    locked = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={poster_id, claimant_id}).order_by("pk")}
+    locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={poster_id, claimant_id}).order_by("pk")}
     poster, claimant = locked.get(poster_id), locked.get(claimant_id)
     now = timezone.now()
     if poster is None or not poster.is_active or not is_campus_verified(poster, now):
@@ -343,7 +346,7 @@ def cancel_after_counterparty_revocation(bounty_id: int, user) -> Bounty:
 
         # Users last, ascending id. The returned rows are the locked, fresh ones.
         User = get_user_model()
-        locked = {u.pk: u for u in User.objects.select_for_update().filter(
+        locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(
             pk__in={bounty.poster_id, claim.claimant_id}).order_by("pk")}
         bounty.accepted_claim = claim
         claim.claimant = locked[claim.claimant_id]

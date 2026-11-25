@@ -74,10 +74,14 @@ def can_verify_students(user) -> bool:
 
 
 def can_view_hidden_bounty(user, bounty) -> bool:
-    """A hidden bounty is visible only to its poster and to moderators."""
+    """A hidden bounty is visible to its poster, to moderators, and to a claimant who was accepted on it
+    (still ACCEPTED, or CANCELLED after acceptance): they have notifications linking to it and may need
+    to cancel it there. Seeing the page does not include the claim list."""
     if not getattr(user, "is_authenticated", False):
         return False
-    return user.id == bounty.poster_id or can_moderate(user)
+    if user.id == bounty.poster_id or can_moderate(user):
+        return True
+    return bounty.claims.filter(claimant=user, status__in=[ClaimStatus.ACCEPTED, ClaimStatus.CANCELLED]).exists()
 
 
 def can_view_claims(user, bounty) -> bool:
@@ -85,7 +89,9 @@ def can_view_claims(user, bounty) -> bool:
 
     Seeing the list is not seeing contact: that stays behind ``can_view_contact``.
     """
-    return can_view_hidden_bounty(user, bounty)
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return user.id == bounty.poster_id or can_moderate(user)
 
 
 # Revocation reasons after which the *other* party may walk away from an accepted bounty. LEFT_CAMPUS
