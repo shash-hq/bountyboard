@@ -1,8 +1,8 @@
 """POST /internal/tick: the scheduler's single entry point.
 
 A GitHub Actions cron calls it every ~10 minutes (the free web tier has no workers or cron, and
-sleeps when idle, so the call also wakes it). Each call, in order: closes overdue bounties, then
-drains the email outbox. Both are idempotent and safe to run concurrently, so an overlapping or
+sleeps when idle, so the call also wakes it). Each call, in order: closes overdue bounties, closes lapsed campus
+verifications, then drains the email outbox. Both are idempotent and safe to run concurrently, so an overlapping or
 repeated call does no harm. Running queries also keeps the free database from pausing.
 
 Authentication is a shared secret in ``X-Tick-Secret``, compared in constant time. With no secret
@@ -18,6 +18,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
+
+from apps.accounts import expiry
 
 from . import outbox, services
 
@@ -46,8 +48,13 @@ def tick_view(request):
         logger.exception("tick: expiry sweep failed")
         result["expired_error"] = True
     try:
+        result["verifications"] = expiry.sweep_verifications()
+    except Exception:  # noqa: BLE001
+        logger.exception("tick: verification sweep failed")
+        result["verifications_error"] = True
+    try:
         result["outbox"] = outbox.drain(max_seconds=TICK_BUDGET_SECONDS)
     except Exception:  # noqa: BLE001
         logger.exception("tick: outbox drain failed")
         result["outbox_error"] = True
-    return JsonResponse(result, status=500 if ("expired_error" in result or "outbox_error" in result) else 200)
+    return JsonResponse(result, status=500 if any(k.endswith("_error") for k in result) else 200)
