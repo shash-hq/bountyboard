@@ -18,7 +18,7 @@ from apps.accounts import moderation
 from apps.accounts.testing import create_verified_user
 from apps.bounties import services
 from apps.bounties.exceptions import NotPermitted
-from apps.bounties.models import BountyStatus
+from apps.bounties.models import BountyStatus, ClaimStatus
 from apps.bounties.tests_races import in_worker, make_bounty, make_claim, wait_until_a_lock_request_is_waiting
 
 User = get_user_model()
@@ -48,6 +48,8 @@ class RevocationDeadlockTests(TransactionTestCase):
                 return wait_until_a_lock_request_is_waiting(timeout=0.2)
             except AssertionError:
                 pass
+        if thread.is_alive():
+            self.fail("the worker neither blocked on a row we hold nor finished")
 
     def revoke_claimant_while(self, fn):
         """``fn`` runs (as far as it can) while the claimant's row is held; then the claimant is revoked."""
@@ -97,6 +99,9 @@ class RevocationDeadlockTests(TransactionTestCase):
         bounty, third = self.bounty_claimed_on_by_the_pair()
         outcome = self.revoke_claimant_while(lambda: services.cancel_bounty(bounty.pk, third))
         self.assertNotIn("err", outcome)
+        bounty.refresh_from_db()
+        self.assertEqual(bounty.status, BountyStatus.CANCELLED)
+        self.assertEqual(set(bounty.claims.values_list("status", flat=True)), {ClaimStatus.REJECTED})
 
     def test_expiring_a_bounty_against_a_revocation_of_one_of_its_claimants(self):
         bounty, _ = self.bounty_claimed_on_by_the_pair()
