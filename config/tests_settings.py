@@ -22,7 +22,7 @@ VALID_ENV = {
     "REG_NO_HMAC_KEY": "r" * 16 + "Qw3-" * 8,  # 48 chars, distinct from SECRET_KEY
     "CARD_NAME_KEYS": "Zm9vYmFyLWNhcmQtbmFtZS1rZXktMzItYnl0ZXMhISE=",  # 32 bytes, url-safe b64
 }
-SETTINGS_MODULES = ("config.settings.base", "config.settings.dev", "config.settings.prod")
+SETTINGS_MODULES = ("config.settings.base", "config.settings.dev", "config.settings.prod", "config.settings.test")
 
 
 class ProdSettingsFailClosedTests(SimpleTestCase):
@@ -39,6 +39,14 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
                 sys.modules.pop(m, None)
                 if saved[m] is not None:
                     sys.modules[m] = saved[m]
+
+    def test_production_never_uses_the_fast_test_hasher(self):
+        """config.settings.test swaps in MD5 for speed; that must stay confined to the test settings."""
+        for module in ("config.settings.base", "config.settings.dev", "config.settings.prod"):
+            self.assertFalse(hasattr(self.load(module), "PASSWORD_HASHERS"), module)  # Django's default (PBKDF2) applies
+        self.assertEqual(
+            self.load("config.settings.test").PASSWORD_HASHERS, ["django.contrib.auth.hashers.MD5PasswordHasher"]
+        )
 
     def test_valid_environment_boots(self):
         s = self.load()
