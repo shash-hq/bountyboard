@@ -229,6 +229,13 @@ class ReleaseIdentityForm(forms.Form):
     )
 
 
+class ClearBlockForm(forms.Form):
+    note = forms.CharField(
+        label="Why can they verify again?", max_length=500,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )
+
+
 class ResolveReviewForm(forms.Form):
     resolution = forms.ChoiceField(label="Decision", choices=[])
     note = forms.CharField(

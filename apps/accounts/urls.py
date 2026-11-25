@@ -15,6 +15,7 @@ urlpatterns = [
     path("mod/users/<int:pk>/reveal-contact/", mod_views.mod_reveal_contact_view, name="mod_reveal_contact"),
     path("mod/users/<int:pk>/reveal-card-name/", mod_views.mod_reveal_card_name_view, name="mod_reveal_card_name"),
     path("mod/users/<int:pk>/revoke/", mod_views.mod_revoke_view, name="mod_revoke"),
+    path("mod/users/<int:pk>/clear-block/", mod_views.mod_clear_block_view, name="mod_clear_block"),
     path("mod/users/<int:pk>/release-identity/", mod_views.mod_release_identity_view, name="mod_release_identity"),
     path("mod/reviews/", mod_views.mod_reviews_view, name="mod_reviews"),
     path("mod/reviews/<int:pk>/resolve/", mod_views.mod_resolve_review_view, name="mod_resolve_review"),

@@ -17,6 +17,9 @@
     {% elif last_verification %}
       <p style="margin: 0 0 var(--spacing-3) 0;">Your previous verification was revoked.</p>
     {% endif %}
+    {% if verification_blocked %}
+      <p style="margin: 0;">You can't verify again yet: a moderator has to allow it.</p>
+    {% endif %}
     {% if presence_code %}
       <p style="margin: 0 0 var(--spacing-2) 0;">
         To verify in person, show your LPU ID card and this code at a verification desk:

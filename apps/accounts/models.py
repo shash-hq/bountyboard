@@ -175,6 +175,13 @@ class CampusVerification(models.Model):
     )
     revoke_note = models.TextField(blank=True, default="")
     renewal_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    # A row revoked as invalid or for a policy violation blocks re-verification until a moderator
+    # sets these (see campus.is_blocked). The revocation itself stays on record.
+    block_cleared_at = models.DateTimeField(null=True, blank=True)
+    block_cleared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
 
     objects = CampusVerificationManager()
 
@@ -296,6 +303,7 @@ class AuditAction(models.TextChoices):
     REG_NO_LOOKUP = "REG_NO_LOOKUP"
     IDENTITY_REVIEW_RESOLVED = "IDENTITY_REVIEW_RESOLVED"
     ACCOUNT_DELETED = "ACCOUNT_DELETED"
+    BLOCK_CLEARED = "BLOCK_CLEARED"
 
 
 class AuditEvent(models.Model):

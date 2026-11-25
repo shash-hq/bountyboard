@@ -16,9 +16,9 @@ from django_ratelimit.decorators import ratelimit
 from apps.bounties.exceptions import DomainError
 from apps.bounties.policies import can_moderate
 
-from . import moderation
+from . import campus, moderation
 from .forms import (
-    ModReasonForm, RegNoLookupForm, ReleaseIdentityForm, ResolveReviewForm, RevokeForm, StaffNoteForm,
+    ClearBlockForm, ModReasonForm, RegNoLookupForm, ReleaseIdentityForm, ResolveReviewForm, RevokeForm, StaffNoteForm,
 )
 from .identity import InvalidRegNo
 from .models import AuditEvent, CampusVerification, IdentityReview, ReviewStatus, StudentIdentity, User
@@ -63,6 +63,8 @@ def _user_context(subject, **extra):
         "revoke_form": RevokeForm(auto_id="revoke-%s"),
         "release_form": ReleaseIdentityForm(auto_id="release-%s"),
         "staff_form": StaffNoteForm(auto_id="staff-%s"),
+        "blocked": campus.is_blocked(subject),
+        "block_form": ClearBlockForm(auto_id="block-%s"),
         **extra,
     }
 
@@ -128,6 +130,23 @@ def mod_revoke_view(request, pk):
             messages.error(request, e.messages[0])
     else:
         messages.error(request, "Choose a valid reason (and keep the note under 500 characters).")
+    return redirect("accounts:mod_user", pk=subject.pk)
+
+
+@login_required
+@require_POST
+def mod_clear_block_view(request, pk):
+    _require_moderator(request)
+    subject = get_object_or_404(User, pk=pk)
+    form = ClearBlockForm(request.POST)
+    if form.is_valid():
+        try:
+            moderation.clear_verification_block(request.user.pk, subject.pk, form.cleaned_data["note"])
+            messages.success(request, f"{subject.username} may verify again.")
+        except DomainError as e:
+            messages.error(request, e.messages[0])
+    else:
+        messages.error(request, "Say why the block is being lifted.")
     return redirect("accounts:mod_user", pk=subject.pk)
 
 

@@ -24,6 +24,10 @@ class SubjectNotFound(AccountsError):
     """No such user, or one that cannot be verified right now."""
 
 
+class VerificationBlocked(AccountsError):
+    """Revoked for cause: a moderator has to lift the block before any new verification."""
+
+
 class InvalidState(AccountsError):
     """The row is not in a state where this action applies (re-read under the lock)."""
 

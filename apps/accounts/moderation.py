@@ -14,6 +14,7 @@ from apps.bounties import inbox
 from apps.bounties.models import Bounty, BountyStatus, NotificationKind
 from apps.bounties.policies import CANCELLABLE_REVOKE_REASONS, can_moderate
 
+from . import campus
 from .errors import InvalidState, NotPermitted
 from .identity import decrypt_card_name, hash_reg_no, redact_reg_nos
 from .models import (
@@ -47,7 +48,9 @@ def _clean_note(note: str) -> str:
 
 def revoke_verification(moderator_id, user_id, reason, note="", now=None):
     """Revoke the user's active campus verification. The identity binding is kept, so a revoked
-    user cannot simply re-verify the same card on a new account (see ``release_identity``).
+    user cannot simply re-verify the same card on a new account (see ``release_identity``). For an
+    invalid verification or a policy violation the account is also blocked from verifying again
+    until ``clear_verification_block``.
 
     Existing CLAIMED bounties and contact details already shown are left alone. For an invalid
     verification or a policy violation the counterparty of each such bounty gets an in-app
@@ -158,6 +161,30 @@ def reveal_card_name(actor_id, user_id, reason="", now=None) -> str:
         return decrypt_card_name(verification.card_name_enc)
 
 
+def clear_verification_block(moderator_id, user_id, note, now=None):
+    """Let a user who was revoked for cause verify again. It verifies nobody by itself.
+
+    A note is required, and a moderator cannot lift their own block. Same lock as revocation, so the
+    two cannot interleave.
+    """
+    note = _clean_note(note)
+    if not note:
+        raise InvalidState("Say why the block is being lifted.")
+    now = now or timezone.now()
+    with transaction.atomic():
+        moderator, subject = _lock(moderator_id, user_id)
+        if moderator.pk == subject.pk:
+            raise NotPermitted("You cannot lift your own block.")
+        cleared = CampusVerification.objects.filter(
+            user=subject, revoke_reason__in=campus.BLOCKING_REASONS, block_cleared_at__isnull=True
+        ).update(block_cleared_at=now, block_cleared_by=moderator)
+        if not cleared:
+            raise InvalidState("This account is not blocked.")
+        AuditEvent.objects.create(
+            actor=moderator, subject=subject, action="BLOCK_CLEARED", note=note, created_at=now
+        )
+
+
 def _lock_any(actor_id, subject_id):
     rows = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={actor_id, subject_id}).order_by("pk")}
     actor, subject = rows.get(actor_id), rows.get(subject_id)
@@ -232,7 +259,7 @@ def resolve_identity_review(moderator_id, review_id, resolution, note, now=None)
     """Close an open registration-number collision.
 
     ``KEEP_EXISTING``  the existing holder is right; the newcomer's verification is revoked with
-                       VERIFICATION_INVALID (so they must verify again properly).
+                       VERIFICATION_INVALID, which blocks them until a moderator lifts it.
     ``REASSIGN``       the newcomer is right: the holder's binding is released, rebound to the
                        newcomer, and the old holder's verification is revoked (INVALID).
     ``BOTH_LEGIT_TYPO`` is refused: closing would leave the newcomer verified but unbound with no way

@@ -50,6 +50,18 @@
     </form>
   </div>
 
+  {% if blocked %}
+  <div class="brutal-card brutal-card--yellow">
+    <h2>Blocked from verifying again</h2>
+    <p>Revoked as invalid or for a policy violation. Neither a desk nor campus email can verify this account until you allow it.</p>
+    <form method="post" action="{% url 'accounts:mod_clear_block' subject.pk %}" novalidate>
+      {% csrf_token %}
+      {{ block_form.note.label_tag }} {{ block_form.note }}
+      <button type="submit" class="btn btn-sm">ALLOW VERIFICATION</button>
+    </form>
+  </div>
+  {% endif %}
+
   <div class="brutal-card">
     <h2>Revoke campus verification</h2>
     <form method="post" action="{% url 'accounts:mod_revoke' subject.pk %}" novalidate>

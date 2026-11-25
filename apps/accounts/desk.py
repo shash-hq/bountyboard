@@ -13,7 +13,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import campus
-from .errors import InvalidPresenceCode, NotPermitted, SubjectNotFound, VerifierRateLimited
+from .errors import (
+    InvalidPresenceCode, NotPermitted, SubjectNotFound, VerificationBlocked, VerifierRateLimited,
+)
 from .identity import encrypt_card_name, hash_reg_no, normalize_card_name, normalize_reg_no
 from .models import AuditEvent, CampusVerification, IdentitySource, StudentIdentity, User, VerificationMethod
 
@@ -80,6 +82,9 @@ def verify_in_person(verifier_id, username, presence_code_value, reg_no, card_na
             raise SubjectNotFound("No such user.")
         if not _code_is_valid(subject.pk, presence_code_value, now):
             raise InvalidPresenceCode("That code is wrong or has expired. Ask the student to refresh their code.")
+        # After the code check, so a verifier learns this only about someone standing in front of them.
+        if campus.is_blocked(subject):
+            raise VerificationBlocked("This account can't be verified until a moderator allows it.")
         _check_rate_limit(verifier, now)
 
         identity = _card_identity(subject, digest, last4, now)

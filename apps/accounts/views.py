@@ -208,7 +208,9 @@ def _campus_context(user):
             ctx["last_ended_expired"] = last.revoked_at is None or last.revoke_reason == RevokeReason.EXPIRED
             ctx["last_expired_on"] = last.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
         ctx["last_verification"] = last
-        ctx["presence_code"] = desk.presence_code(user.pk, now)
+        ctx["verification_blocked"] = campus.is_blocked(user)
+        if not ctx["verification_blocked"]:
+            ctx["presence_code"] = desk.presence_code(user.pk, now)
     return ctx
 
 
@@ -263,7 +265,9 @@ def renew_view(request):
         except DomainError as e:
             messages.error(request, e.messages[0])
         return redirect("accounts:renew")
-    return render(request, "accounts/renew.html", {"can_renew": can, "email": request.user.email})
+    return render(request, "accounts/renew.html", {
+        "can_renew": can, "email": request.user.email, "ttl_days": settings.VERIFICATION_TTL_DAYS,
+    })
 
 
 @login_required

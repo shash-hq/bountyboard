@@ -7,13 +7,13 @@
   <div class="brutal-card">
     <h1 class="page-title">RENEW CAMPUS VERIFICATION</h1>
     {% if can_renew %}
-      <p>We'll email a one-time link to <strong>{{ email }}</strong>. Open it while signed in and press the button; your verification is extended for another year.</p>
+      <p>We'll email a one-time link to <strong>{{ email }}</strong>. Open it while signed in and press the button; your verification is renewed for {{ ttl_days }} days.</p>
       <form method="post" action="{% url 'accounts:renew' %}">
         {% csrf_token %}
         <button type="submit" class="btn btn-primary btn-block">EMAIL ME THE LINK &rarr;</button>
       </form>
     {% else %}
-      <p>This account can't be renewed by email. If your verification lapsed, visit a verification desk with your LPU ID card (your dashboard shows the code to bring). If it was revoked, contact a moderator.</p>
+      <p>This account can't be renewed by email. If your verification lapsed, visit a verification desk with your LPU ID card (your dashboard shows the code to bring). If it was revoked as invalid or for a policy violation, only a moderator can allow it again.</p>
       <a href="{% url 'me' %}" class="btn">BACK TO DASHBOARD</a>
     {% endif %}
   </div>

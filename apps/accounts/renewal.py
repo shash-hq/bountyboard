@@ -5,9 +5,10 @@ and following it (while signed in as that account) inserts a fresh CAMPUS_EMAIL 
 old one. The identity binding is untouched, so the registration number is not asked for again.
 
 Who may renew: an email-verified, active account whose address is an exact campus-domain match, and
-who either holds an active verification or whose latest one simply expired. A verification revoked
-for cause (left campus, invalid, policy violation, email changed) cannot be renewed by the user: that
-needs a moderator or a desk. There is deliberately no one-click "I'm still on campus" button, which
+who either holds an active verification, or whose latest one simply expired or was a revocation for
+cause that a moderator has since cleared. An account blocked for cause cannot renew at all
+(``campus.is_blocked``). After leaving campus or changing email, the user goes to a desk or a
+moderator. There is deliberately no one-click "I'm still on campus" button, which
 would make the TTL meaningless.
 
 The token reuses the user's email-token columns (the same hashing as signup confirmation). Those are
@@ -38,12 +39,18 @@ RENEWABLE_ENDINGS = (RevokeReason.EXPIRED,)
 def renewal_allowed(user, now=None) -> bool:
     if not (user.is_active and user.email_verified_at is not None and campus.campus_email_allowed(user.email)):
         return False
+    if campus.is_blocked(user):
+        return False
     now = now or timezone.now()
     if campus.active_verifications(now).filter(user=user).exists():
         return True
     latest = CampusVerification.objects.filter(user=user).order_by("-verified_at", "-pk").first()
     # A row that is unrevoked but past the TTL is a lapse the sweeper hasn't recorded yet.
-    return latest is not None and (latest.revoked_at is None or latest.revoke_reason in RENEWABLE_ENDINGS)
+    return latest is not None and (
+        latest.revoked_at is None
+        or latest.revoke_reason in RENEWABLE_ENDINGS
+        or latest.block_cleared_at is not None  # a moderator allowed this account to verify again
+    )
 
 
 def request_renewal(user_id: int) -> None:
