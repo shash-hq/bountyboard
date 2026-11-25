@@ -311,11 +311,11 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
         bounty.save(update_fields=["status", "updated_at"])
         # Also reject any pending claims, in the same transaction, under the bounty lock
         pending = list(
-            Claim.objects.select_for_update().select_related("claimant")
+            Claim.objects.select_for_update(of=("self",)).select_related("claimant")
             .filter(bounty=bounty, status=ClaimStatus.PENDING)
             .order_by("id")
         )
-        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED, updated_at=timezone.now())
         for c in pending:
             inbox.notify(
                 c.claimant, NotificationKind.BOUNTY_CANCELLED,
@@ -386,12 +386,12 @@ def expire_bounty(bounty_id: int, now=None) -> bool:
         if bounty.status != BountyStatus.OPEN or bounty.deadline > now:
             return False
         pending = list(
-            Claim.objects.select_for_update().select_related("claimant")
+            Claim.objects.select_for_update(of=("self",)).select_related("claimant")
             .filter(bounty=bounty, status=ClaimStatus.PENDING).order_by("id")
         )
         bounty.status = BountyStatus.EXPIRED
         bounty.save(update_fields=["status", "updated_at"])
-        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED, updated_at=now)
         inbox.notify(
             bounty.poster, NotificationKind.BOUNTY_EXPIRED,
             f"'{bounty.title}' expired with its deadline. Post it again if you still need it.",
