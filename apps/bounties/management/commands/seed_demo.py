@@ -102,7 +102,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("Clearing previous demo bounties (seed users' only)..."))
         Bounty.objects.filter(poster__in=users.values()).delete()
 
-        self.stdout.write(self.style.SUCCESS(f"Verified {len(users)} student users."))
+        self.stdout.write(self.style.SUCCESS(f"Verified {len(users) - 1} student users."))
         if created_count:
             self.stdout.write(f"Password for the {created_count} newly created demo users: {password}")
 
