@@ -1,9 +1,12 @@
 """Revocation consequences: the counterparty is notified, and may cancel (and only then)."""
+import unittest
+
 from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth.models import Group
 from django.db import transaction
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -205,6 +208,7 @@ class CancelViewTests(Base):
         self.assert_still_claimed()
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class CancelVersusReVerifyRaceTests(TransactionTestCase):
     """The cancel is decided on the locked user rows, so a re-verification that commits first wins.
 
