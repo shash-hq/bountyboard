@@ -52,7 +52,7 @@ def request_renewal(user_id: int) -> None:
     The user row is locked, so concurrent requests serialize and only the newest link is live.
     """
     with transaction.atomic():
-        user = User.objects.select_for_update().get(pk=user_id)
+        user = User.objects.select_for_update(no_key=True).get(pk=user_id)
         if not renewal_allowed(user):
             raise NotPermitted("This account can't be renewed by email. Visit a verification desk instead.")
         token = secrets.token_urlsafe(32)
@@ -94,7 +94,7 @@ def confirm_renewal(user_id: int, token: str, reg_no: str = "", now=None):
     """
     now = now or timezone.now()
     with transaction.atomic():
-        user = User.objects.select_for_update().filter(pk=user_id, is_active=True).first()
+        user = User.objects.select_for_update(no_key=True).filter(pk=user_id, is_active=True).first()
         if user is None or not _token_is_live(user, token, now) or not renewal_allowed(user, now):
             raise InvalidToken
         campus.verify_campus_email(user, reg_no, now)  # may raise InvalidRegNo: nothing written yet
