@@ -17,9 +17,11 @@ from apps.bounties.exceptions import DomainError
 from apps.bounties.policies import can_moderate
 
 from . import moderation
-from .forms import ModReasonForm, RegNoLookupForm, ReleaseIdentityForm, RevokeForm
+from .forms import (
+    ModReasonForm, RegNoLookupForm, ReleaseIdentityForm, ResolveReviewForm, RevokeForm, StaffNoteForm,
+)
 from .identity import InvalidRegNo
-from .models import AuditEvent, CampusVerification, StudentIdentity, User
+from .models import AuditEvent, CampusVerification, IdentityReview, ReviewStatus, StudentIdentity, User
 
 REVEAL_RATE = "30/h"
 
@@ -58,6 +60,7 @@ def _user_context(subject, **extra):
         "reason_form": ModReasonForm(),
         "revoke_form": RevokeForm(),
         "release_form": ReleaseIdentityForm(),
+        "staff_form": StaffNoteForm(),
         **extra,
     }
 
@@ -141,3 +144,61 @@ def mod_release_identity_view(request, pk):
     else:
         messages.error(request, "Say why the identity is being released.")
     return redirect("accounts:mod_user", pk=subject.pk)
+
+
+@login_required
+@never_cache
+def mod_reviews_view(request):
+    """Open registration-number collisions, oldest first."""
+    _require_moderator(request)
+    reviews = list(IdentityReview.objects.filter(status=ReviewStatus.OPEN).select_related("claimant").order_by("created_at", "pk"))
+    holders = {
+        i.reg_no_hmac: i.user
+        for i in StudentIdentity.objects.filter(reg_no_hmac__in=[r.claimed_hmac for r in reviews]).select_related("user")
+    }
+    for r in reviews:
+        r.holder = holders.get(r.claimed_hmac)
+    return render(request, "accounts/mod_reviews.html", {"reviews": reviews, "form": ResolveReviewForm()})
+
+
+@login_required
+@require_POST
+def mod_resolve_review_view(request, pk):
+    _require_moderator(request)
+    form = ResolveReviewForm(request.POST)
+    if form.is_valid():
+        try:
+            moderation.resolve_identity_review(request.user.pk, pk, form.cleaned_data["resolution"], form.cleaned_data["note"])
+            messages.success(request, "Review resolved.")
+        except DomainError as e:
+            messages.error(request, e.messages[0])
+    else:
+        messages.error(request, "Choose a decision and say why.")
+    return redirect("accounts:mod_reviews")
+
+
+def _staff_action(request, pk, service, done):
+    _require_moderator(request)
+    subject = get_object_or_404(User, pk=pk)
+    form = StaffNoteForm(request.POST)
+    if form.is_valid():
+        try:
+            service(request.user.pk, subject.pk, form.cleaned_data["note"])
+            messages.success(request, done.format(user=subject.username))
+        except DomainError as e:
+            messages.error(request, e.messages[0])
+    else:
+        messages.error(request, "The note is too long.")
+    return redirect("accounts:mod_user", pk=subject.pk)
+
+
+@login_required
+@require_POST
+def mod_grant_staff_view(request, pk):
+    return _staff_action(request, pk, moderation.grant_staff, "{user} now has the staff role.")
+
+
+@login_required
+@require_POST
+def mod_revoke_staff_view(request, pk):
+    return _staff_action(request, pk, moderation.revoke_staff, "{user} no longer has the staff role.")

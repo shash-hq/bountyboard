@@ -7,6 +7,7 @@
   <div class="brutal-card">
     <h1 class="page-title">IDENTITY LOOKUP</h1>
     <p>Find the account bound to a registration number. The number is hashed and not stored; every lookup, hit or miss, is recorded with your reason.</p>
+    <p><a href="{% url 'accounts:mod_reviews' %}">Open identity reviews</a></p>
     <form method="post" action="{% url 'accounts:mod_index' %}" novalidate>
       {% csrf_token %}
       {% for error in form.non_field_errors %}<div class="field-error">{{ error }}</div>{% endfor %}

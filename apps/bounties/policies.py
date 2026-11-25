@@ -122,3 +122,13 @@ def can_cancel_after_counterparty_revocation(user, bounty, now=None) -> bool:
         return False
     latest = CampusVerification.objects.filter(user=other).order_by("-verified_at", "-pk").first()
     return latest is not None and latest.revoke_reason in CANCELLABLE_REVOKE_REASONS
+
+
+def has_staff_badge(user, now=None) -> bool:
+    """Show the "Staff" badge for ``user``? They hold the staff role AND are campus-verified now.
+
+    Both, because the role alone is a moderator's note about a person while the badge tells other
+    students "this is a real, checked member of campus". A lapsed or revoked verification hides it
+    without touching the role.
+    """
+    return getattr(user, "staff_source", None) is not None and is_campus_verified(user, now)

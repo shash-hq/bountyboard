@@ -227,3 +227,24 @@ class ReleaseIdentityForm(forms.Form):
         label="Why is the identity being released?", max_length=500,
         widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
     )
+
+
+class ResolveReviewForm(forms.Form):
+    resolution = forms.ChoiceField(label="Decision", choices=[])
+    note = forms.CharField(
+        label="Why?", max_length=500,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        from .models import ReviewResolution
+
+        super().__init__(*args, **kwargs)
+        self.fields["resolution"].choices = ReviewResolution.choices
+
+
+class StaffNoteForm(forms.Form):
+    note = forms.CharField(
+        label="Note (optional)", max_length=500, required=False,
+        widget=forms.TextInput(attrs={"class": "input-text", "autocomplete": "off"}),
+    )

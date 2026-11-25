@@ -234,3 +234,30 @@ class CancelVersusReVerifyRaceTests(TransactionTestCase):
         self.assertIsInstance(outcome.get("err"), NotPermitted, outcome)
         bounty.refresh_from_db()
         self.assertEqual((bounty.status, bounty.accepted_claim_id), (BountyStatus.CLAIMED, claim.pk))
+
+
+class StaffBadgeTests(Base):
+    """The badge needs the staff role AND an active campus verification, checked at render time."""
+
+    def badge(self):
+        self.client.force_login(self.stranger)
+        return b"STAFF</span>" in self.client.get(self.bounty.get_absolute_url()).content
+
+    def test_role_and_verification_both_required(self):
+        self.assertFalse(self.badge())  # verified, not staff
+        moderation.grant_staff(self.mod.pk, self.poster.pk, "faculty")
+        self.assertTrue(self.badge())
+        self.revoke(self.poster, "LEFT_CAMPUS")
+        self.assertFalse(self.badge())  # staff role kept, verification gone
+
+    def test_staff_without_campus_verification_gets_no_badge(self):
+        bare = create_verified_user("bare", "bare@gmail.com", PW)
+        moderation.grant_staff(self.mod.pk, bare.pk)
+        b = mkbounty(bare, "Bare staff bounty")
+        self.client.force_login(self.stranger)
+        self.assertNotIn(b"STAFF</span>", self.client.get(b.get_absolute_url()).content)
+
+    def test_removing_the_role_removes_the_badge(self):
+        moderation.grant_staff(self.mod.pk, self.poster.pk)
+        moderation.revoke_staff(self.mod.pk, self.poster.pk)
+        self.assertFalse(self.badge())

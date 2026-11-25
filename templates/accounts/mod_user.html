@@ -67,6 +67,25 @@
   </div>
 
   <div class="brutal-card">
+    <h2>Staff role</h2>
+    {% if subject.staff_source %}
+      <p>Staff since {{ subject.staff_since|date:"M d, Y" }} ({{ subject.get_staff_source_display }}).</p>
+      <form method="post" action="{% url 'accounts:mod_revoke_staff' subject.pk %}" novalidate>
+        {% csrf_token %}
+        {{ staff_form.note.label_tag }} {{ staff_form.note }}
+        <button type="submit" class="btn btn-sm btn-danger">REMOVE STAFF ROLE</button>
+      </form>
+    {% else %}
+      <p>Not staff. The badge shows on their bounties only while they are also campus-verified.</p>
+      <form method="post" action="{% url 'accounts:mod_grant_staff' subject.pk %}" novalidate>
+        {% csrf_token %}
+        {{ staff_form.note.label_tag }} {{ staff_form.note }}
+        <button type="submit" class="btn btn-sm">GRANT STAFF ROLE</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="brutal-card">
     <h2>Audit trail</h2>
     <ul>
       {% for e in audit %}

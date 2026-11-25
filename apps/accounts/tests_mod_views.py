@@ -1,7 +1,7 @@
 """The moderator identity console: who can reach it, what it records, and what it never leaks."""
 from django.urls import reverse
 
-from .models import AuditEvent, CampusVerification, StudentIdentity
+from .models import AuditEvent, CampusVerification, IdentityReview, StudentIdentity
 from .tests_moderation import REG, ModTestCase
 
 
@@ -111,3 +111,77 @@ class ConsoleTests(ModViewTestCase):
 
     def test_unknown_user_is_a_404(self):
         self.assertEqual(self.client.get(reverse("accounts:mod_user", args=[999999])).status_code, 404)
+
+
+class ReviewAndStaffViewTests(ModViewTestCase):
+    def setUp(self):
+        super().setUp()
+        self.newcomer = mk_user("newcomer")
+        self.desk_verify(self.newcomer, name="Rohan Das")  # same REG as the student: opens a review
+        self.review = IdentityReview.objects.get(claimant=self.newcomer)
+        self.resolve_url = reverse("accounts:mod_resolve_review", args=[self.review.pk])
+        self.pk = self.student.pk
+
+    def test_non_moderators_are_refused_everywhere_here(self):
+        targets = [
+            ("get", reverse("accounts:mod_reviews")),
+            ("post", self.resolve_url),
+            ("post", reverse("accounts:mod_grant_staff", args=[self.pk])),
+            ("post", reverse("accounts:mod_revoke_staff", args=[self.pk])),
+        ]
+        for who in (self.verifier, self.student):
+            self.client.force_login(who)
+            for method, url in targets:
+                r = getattr(self.client, method)(url, {"resolution": "KEEP_EXISTING", "note": "x"})
+                self.assertEqual(r.status_code, 403, f"{who.username} {url}")
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.status, "OPEN")
+        self.student.refresh_from_db()
+        self.assertIsNone(self.student.staff_source)
+
+    def test_the_queue_lists_open_reviews_with_the_holder_and_never_the_number(self):
+        self.client.force_login(self.mod)
+        html = self.client.get(reverse("accounts:mod_reviews")).content.decode()
+        self.assertIn("newcomer", html)
+        self.assertIn(self.student.username, html)
+        self.assertIn(REG[-4:], html)
+        self.assertNotIn(REG, html)
+
+    def test_resolving_runs_the_service_and_empties_the_queue(self):
+        self.client.force_login(self.mod)
+        r = self.client.post(self.resolve_url, {"resolution": "BOTH_LEGIT_TYPO", "note": "typo"})
+        self.assertRedirects(r, reverse("accounts:mod_reviews"))
+        self.review.refresh_from_db()
+        self.assertEqual((self.review.status, self.review.resolution), ("RESOLVED", "BOTH_LEGIT_TYPO"))
+        self.assertContains(self.client.get(reverse("accounts:mod_reviews")), "No open reviews")
+
+    def test_resolving_without_a_note_or_with_a_bad_choice_changes_nothing(self):
+        self.client.force_login(self.mod)
+        self.client.post(self.resolve_url, {"resolution": "KEEP_EXISTING", "note": ""})
+        self.client.post(self.resolve_url, {"resolution": "NUKE", "note": "x"})
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.status, "OPEN")
+
+    def test_resolving_twice_shows_a_message_instead_of_crashing(self):
+        self.client.force_login(self.mod)
+        data = {"resolution": "KEEP_EXISTING", "note": "x"}
+        self.client.post(self.resolve_url, data)
+        r = self.client.post(self.resolve_url, data, follow=True)
+        self.assertContains(r, "already resolved")
+
+    def test_grant_and_revoke_staff_from_the_user_page(self):
+        self.client.force_login(self.mod)
+        user_url = reverse("accounts:mod_user", args=[self.pk])
+        self.assertRedirects(self.client.post(reverse("accounts:mod_grant_staff", args=[self.pk]), {"note": "CSE faculty"}), user_url)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.staff_source, "MODERATOR")
+        self.assertContains(self.client.get(user_url), "REMOVE STAFF ROLE")
+        self.client.post(reverse("accounts:mod_revoke_staff", args=[self.pk]), {"note": ""})
+        self.student.refresh_from_db()
+        self.assertIsNone(self.student.staff_source)
+
+
+def mk_user(name):
+    from .testing import create_verified_user
+
+    return create_verified_user(name, f"{name}@gmail.com", "pw-12345-abc")

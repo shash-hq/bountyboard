@@ -19,6 +19,7 @@ from .policies import (
     can_moderate,
     can_cancel_after_counterparty_revocation,
     can_view_contact,
+    has_staff_badge,
     is_campus_verified,
     can_view_claims,
     can_view_hidden_bounty,
@@ -166,6 +167,7 @@ def bounty_detail_view(request, pk, slug):
         "poster_verified": is_campus_verified(request.user) if request.user == bounty.poster else False,
         "show_poster_contact": can_view_contact(request.user, bounty.poster, bounty),
         "can_cancel_revoked": can_cancel_after_counterparty_revocation(request.user, bounty),
+        "poster_staff_badge": has_staff_badge(bounty.poster),
     }
     return render(request, "bounties/detail.html", context)
 

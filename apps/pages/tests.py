@@ -94,3 +94,18 @@ class LandingAndBoardRoutingTests(TestCase):
     def test_board_lives_at_board_not_at_the_root(self):
         self.assertEqual(reverse("board"), "/board/")
         self.assertEqual(reverse("landing"), "/")
+
+
+class TermsAndPrivacyCopyTests(TestCase):
+    """The terms must say tasks are private arrangements; the privacy page must say what we keep about IDs."""
+
+    def test_terms_say_tasks_are_private_arrangements_not_university_work(self):
+        html = self.client.get("/terms/").content.decode()
+        self.assertIn("private arrangement", html)
+        self.assertIn("never official university work", html)
+
+    def test_privacy_says_what_is_stored_about_id_cards(self):
+        html = self.client.get("/privacy/").content.decode()
+        self.assertIn("never store a photo or scan", html)
+        self.assertIn("last 4 digits", html)
+        self.assertIn("name printed on it, encrypted", html)
