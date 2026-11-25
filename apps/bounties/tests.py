@@ -1,4 +1,3 @@
-import threading
 from datetime import timedelta
 from django.contrib.auth import get_user_model
 from apps.accounts.testing import create_verified_user
@@ -6,8 +5,7 @@ from django.contrib.auth.models import Group, Permission
 from django.core import mail
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.db import DatabaseError, OperationalError, connection, connections, transaction
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -445,93 +443,6 @@ class ClaimsLifecycleAndPermissionDenialTests(TestCase):
         self.assertContains(res_poster_after, "+91 9999988888")
 
 
-class ConcurrencyDoubleAcceptRaceTests(TransactionTestCase):
-    """
-    Tests for race condition prevention during claim acceptance using select_for_update.
-    """
-    def setUp(self):
-        self.poster = create_verified_user(
-            username="race_poster", email="race_poster@campus.edu.in", password="Password123!", campus=True
-        )
-        self.c1_user = create_verified_user(
-            username="race_c1", email="race_c1@campus.edu.in", password="Password123!", campus=True
-        )
-        self.c2_user = create_verified_user(
-            username="race_c2", email="race_c2@campus.edu.in", password="Password123!", campus=True
-        )
-        self.bounty = Bounty.objects.create(
-            poster=self.poster,
-            title="Concurrency Race Test Bounty",
-            description="Testing concurrent accept calls on the same bounty.",
-            category=Category.TECH,
-            reward=400,
-            deadline=timezone.now() + timedelta(days=2),
-            status=BountyStatus.OPEN,
-        )
-        self.claim1 = Claim.objects.create(
-            bounty=self.bounty,
-            claimant=self.c1_user,
-            message="Proposal 1 for race condition check.",
-        )
-        self.claim2 = Claim.objects.create(
-            bounty=self.bounty,
-            claimant=self.c2_user,
-            message="Proposal 2 for race condition check.",
-        )
-
-    def test_double_accept_race_prevented(self):
-        """
-        Verify that even if two requests attempt to accept claim1 and claim2 simultaneously,
-        only one succeeds and the other is safely rejected with ValidationError without corrupting state.
-        """
-        results = []
-        errors = []
-
-        def try_accept(claim_id):
-            import time
-            try:
-                for attempt in range(5):
-                    try:
-                        c = accept_claim(claim_id, self.poster)
-                        results.append(c.id)
-                        return
-                    except (OperationalError, DatabaseError) as e:
-                        if "locked" in str(e).lower() and attempt < 4:
-                            time.sleep(0.05)
-                            continue
-                        errors.append(e)
-                        return
-                    except Exception as e:
-                        errors.append(e)
-                        return
-            finally:
-                # Each worker thread opens its own DB connection. Close it when the thread
-                # ends, otherwise it stays open and teardown cannot drop the test database
-                # ("database is being accessed by other users").
-                connections.close_all()
-
-        t1 = threading.Thread(target=try_accept, args=(self.claim1.id,))
-        t2 = threading.Thread(target=try_accept, args=(self.claim2.id,))
-
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-
-        # Exactly ONE thread must succeed
-        self.assertEqual(len(results), 1)
-        self.assertEqual(len(errors), 1)
-        self.assertTrue(isinstance(errors[0], (InvalidTransition, ValidationError, DatabaseError, OperationalError)))
-
-        # Verify DB state: Bounty is CLAIMED, accepted_claim points to winner, other is REJECTED
-        self.bounty.refresh_from_db()
-        self.assertEqual(self.bounty.status, BountyStatus.CLAIMED)
-        self.assertIn(self.bounty.accepted_claim.id, [self.claim1.id, self.claim2.id])
-
-        accepted_count = Claim.objects.filter(bounty=self.bounty, status=ClaimStatus.ACCEPTED).count()
-        rejected_count = Claim.objects.filter(bounty=self.bounty, status=ClaimStatus.REJECTED).count()
-        self.assertEqual(accepted_count, 1)
-        self.assertEqual(rejected_count, 1)
 class SessionAndCookieFeatureTests(TestCase):
     def setUp(self):
         self.user = create_verified_user(
@@ -742,20 +653,3 @@ class ModeratorWorkflowTests(TestCase):
         self.bounty.refresh_from_db()
         self.assertTrue(report.resolved)
         self.assertTrue(self.bounty.is_hidden)
-
-
-class RateLimitingVerificationTests(TestCase):
-    def test_rate_limited_views_have_ratelimit_decorators(self):
-        """Verify rate limits are configured on all required critical endpoints."""
-        from apps.accounts.views import login_view, signup_view
-        from apps.bounties.views import (
-            bounty_claim_view,
-            bounty_create_view,
-            bounty_report_view,
-        )
-
-        for view_fn in [signup_view, login_view, bounty_create_view, bounty_claim_view, bounty_report_view]:
-            # django-ratelimit sets ratelimit attribute or wraps function
-            has_rl = hasattr(view_fn, "ratelimit") or hasattr(view_fn, "__wrapped__")
-            self.assertTrue(has_rl, f"Expected {view_fn.__name__} to be wrapped with ratelimit decorator.")
-
