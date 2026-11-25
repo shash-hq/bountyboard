@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.accounts.testing import create_verified_user
 
-from . import services
+from . import inbox, services
 from .exceptions import InvalidTransition
 from .models import Bounty, Claim, EmailStatus, Notification, NotificationKind as K
 
@@ -86,7 +86,13 @@ class TransitionOutboxTests(TestCase):
     def test_the_row_rolls_back_with_the_transition(self):
         a = services.create_claim(self.bounty.pk, self.c1, "m" * 12)
         before = Notification.objects.count()
-        with mock.patch("apps.bounties.services.inbox.notify", side_effect=RuntimeError("boom")):
+        real = inbox.notify
+
+        def write_then_fail(*args, **kwargs):
+            real(*args, **kwargs)
+            raise RuntimeError("boom")
+
+        with mock.patch("apps.bounties.services.inbox.notify", side_effect=write_then_fail):
             with self.assertRaises(RuntimeError):
                 services.reject_claim(a.pk, self.poster)
         a.refresh_from_db()

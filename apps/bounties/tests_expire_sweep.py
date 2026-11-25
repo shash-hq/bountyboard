@@ -107,12 +107,14 @@ class SweepTests(TestCase):
         self.assertEqual(Bounty.objects.filter(status=BountyStatus.EXPIRED).count(), 1)
 
     def test_an_expired_bounty_cannot_be_claimed_accepted_edited_or_cancelled(self):
+        claim = Claim.objects.create(bounty=self.late, claimant=self.c2, message="m" * 12)
         self.overdue(self.late)
         services.sweep_expired()
         self.late.refresh_from_db()
         self.assertFalse(self.late.can_claim(self.c1))
         self.assertFalse(self.late.can_edit(self.poster))
         for call in (lambda: services.create_claim(self.late.pk, self.c1, "m" * 12),
+                     lambda: services.accept_claim(claim.pk, self.poster),
                      lambda: services.cancel_bounty(self.late.pk, self.poster),
                      lambda: services.update_bounty_details(self.late.pk, self.poster, reward=500)):
             with self.assertRaises(services.InvalidTransition):
@@ -123,9 +125,15 @@ class SweepTests(TestCase):
         services.sweep_expired()
         self.assertEqual(services.count_live_open_bounties(self.poster), 1)
 
-    def test_a_deadline_extended_since_is_not_expired(self):
-        self.assertFalse(services.expire_bounty(self.live.pk))  # deadline in the future
+    def test_a_bounty_with_a_future_deadline_is_not_expired(self):
+        self.assertFalse(services.expire_bounty(self.live.pk))
+
+    def test_a_deadline_extended_after_the_sweeper_listed_it_is_not_expired(self):
+        self.overdue(self.late)  # what the sweeper's unlocked list would have seen
+        Bounty.objects.filter(pk=self.late.pk).update(deadline=timezone.now() + timedelta(days=1))
         self.assertFalse(services.expire_bounty(self.late.pk))
+        self.late.refresh_from_db()
+        self.assertEqual(self.late.status, BountyStatus.OPEN)
 
 
 @unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL row locks")
@@ -139,17 +147,20 @@ class SweepVersusAcceptRaceTests(TransactionTestCase):
         claimant = create_verified_user("claimant", "claimant@gmail.com", PW, campus=True)
         b = mk(poster, "Race bounty here", 2)
         claim = Claim.objects.create(bounty=b, claimant=claimant, message="m" * 12)
-        Bounty.objects.filter(pk=b.pk).update(deadline=timezone.now() - timedelta(minutes=1))  # now overdue
 
-        worker, outcome = in_worker(lambda: services.expire_bounty(b.pk))
+        # The sweeper's clock is past the deadline; the accept's is not.
+        later = timezone.now() + timedelta(days=3)
+        worker, outcome = in_worker(lambda: services.expire_bounty(b.pk, later))
         with transaction.atomic():
             Bounty.objects.select_for_update().get(pk=b.pk)  # hold the bounty row, as an accept would
             worker.start()
             wait_until_a_lock_request_is_waiting()
-            Claim.objects.filter(pk=claim.pk).update(status=ClaimStatus.ACCEPTED)  # the accept's effect
-            Bounty.objects.filter(pk=b.pk).update(status=BountyStatus.CLAIMED, accepted_claim=claim)
+            services.accept_claim(claim.pk, poster)
         worker.join(timeout=30)
         self.assertFalse(worker.is_alive(), "worker hung")
         self.assertIs(outcome.get("ok"), False, outcome)
         b.refresh_from_db()
         self.assertEqual(b.status, BountyStatus.CLAIMED)
+        claim.refresh_from_db()
+        self.assertEqual(claim.status, ClaimStatus.ACCEPTED)
+        self.assertFalse(Notification.objects.filter(kind=K.BOUNTY_EXPIRED).exists())

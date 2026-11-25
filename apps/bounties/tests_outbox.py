@@ -89,6 +89,7 @@ class DeliveryTests(TestCase):
         self.assertEqual(outbox.deliver_one(), "none")
         self.assertEqual(mail.outbox, [])
 
+    @override_settings(OUTBOX_MAX_ATTEMPTS=6)
     def test_failures_back_off_exponentially_then_give_up(self):
         n = queue(self.claim)
         now = timezone.now()
@@ -159,7 +160,16 @@ class OnCommitTests(TestCase):
             cb()
         self.assertEqual(len(mail.outbox), 1)
 
-    def test_a_failing_on_commit_attempt_never_breaks_the_request(self):
+    def test_an_error_in_delivery_itself_never_breaks_the_request(self):
+        c = accepted_claim()
+        with mock.patch("apps.bounties.outbox.deliver_one", side_effect=RuntimeError("db gone")):
+            with self.assertLogs("apps.bounties.outbox", "ERROR"):
+                with self.captureOnCommitCallbacks(execute=True):
+                    n = queue(c)  # must not raise
+        n.refresh_from_db()
+        self.assertEqual((n.email_status, n.attempts), (EmailStatus.PENDING, 0))
+
+    def test_a_failing_send_leaves_the_row_for_the_tick(self):
         c = accepted_claim()
         with mock.patch("apps.bounties.outbox.EmailMessage.send", side_effect=OSError("down")):
             with self.captureOnCommitCallbacks(execute=True):

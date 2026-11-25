@@ -20,6 +20,7 @@ from apps.accounts.testing import campus_verify, create_verified_user
 from apps.bounties import services
 from apps.bounties.exceptions import DomainError
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus, Notification
+from apps.bounties.models import NotificationKind as K
 from apps.bounties.policies import can_view_contact, is_campus_verified, open_bounty_cap
 
 ALLOWED_BOUNTY_MOVES = {
@@ -229,7 +230,14 @@ class Lifecycle(RuleBasedStateMachine):
         """I7: the row that reports this move exists, once. A cancel or expiry of an OPEN bounty
         reports through its claims' rows, and the poster's own cancel notifies nobody else."""
         if model == "Claim":
-            bounty_id = Claim.objects.get(pk=pk).bounty_id
+            claim = Claim.objects.get(pk=pk)
+            bounty_id, poster, claimant = claim.bounty_id, claim.bounty.poster_id, claim.claimant_id
+            recipients, kinds = {
+                ClaimStatus.ACCEPTED: ({claimant}, {K.CLAIM_ACCEPTED}),
+                ClaimStatus.WITHDRAWN: ({poster}, {K.CLAIM_WITHDRAWN}),
+                ClaimStatus.REJECTED: ({claimant}, {K.CLAIM_REJECTED, K.BOUNTY_CANCELLED, K.BOUNTY_EXPIRED}),
+                ClaimStatus.CANCELLED: ({poster, claimant}, {K.COUNTERPARTY_CANCELLED}),  # whoever didn't cancel
+            }[status]
             keys = {
                 ClaimStatus.ACCEPTED: [f"claim-accepted:{pk}"],
                 ClaimStatus.WITHDRAWN: [f"claim-withdrawn:{pk}"],
@@ -240,12 +248,14 @@ class Lifecycle(RuleBasedStateMachine):
             }[status]
         elif status == BountyStatus.DONE:
             keys = [f"bounty-done:{pk}"]
+            recipients, kinds = {Bounty.objects.get(pk=pk).accepted_claim.claimant_id}, {K.BOUNTY_DONE}
         elif status == BountyStatus.EXPIRED:
             keys = [f"bounty-expired:{pk}"]
+            recipients, kinds = {Bounty.objects.get(pk=pk).poster_id}, {K.BOUNTY_EXPIRED}
         else:
             return
-        found = Notification.objects.filter(idempotency_key__in=keys).count()
-        assert found == 1, (model, pk, status, found)
+        found = list(Notification.objects.filter(idempotency_key__in=keys).values_list("recipient_id", "kind"))
+        assert len(found) == 1 and found[0][0] in recipients and found[0][1] in kinds, (model, pk, status, found)
 
     @invariant()
     def i6_contact_only_between_the_accepted_pair(self):
