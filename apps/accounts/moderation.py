@@ -28,7 +28,7 @@ MAX_NOTE = 500
 
 def _lock(actor_id, subject_id):
     """Lock actor and subject together in ascending id order. Returns (actor, subject)."""
-    rows = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={actor_id, subject_id}).order_by("pk")}
+    rows = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={actor_id, subject_id}).order_by("pk")}
     actor, subject = rows.get(actor_id), rows.get(subject_id)
     # Permission comes from the freshly locked row, so a just-removed Moderators membership applies.
     if actor is None or not can_moderate(actor):
@@ -159,7 +159,7 @@ def reveal_card_name(actor_id, user_id, reason="", now=None) -> str:
 
 
 def _lock_any(actor_id, subject_id):
-    rows = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={actor_id, subject_id}).order_by("pk")}
+    rows = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={actor_id, subject_id}).order_by("pk")}
     actor, subject = rows.get(actor_id), rows.get(subject_id)
     if actor is None or not actor.is_active:
         raise NotPermitted("You are not allowed to view this.")
@@ -221,7 +221,7 @@ def reveal_contact_for_moderation(actor_id, user_id, reason, now=None):
 def _lock_many(actor_id, *subject_ids):
     """Lock the moderator and any number of other users together, ascending id. Returns (actor, {pk: user})."""
     ids = {actor_id, *[i for i in subject_ids if i is not None]}
-    rows = {u.pk: u for u in User.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
+    rows = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in=ids).order_by("pk")}
     actor = rows.get(actor_id)
     if actor is None or not can_moderate(actor):
         raise NotPermitted("You are not allowed to moderate.")

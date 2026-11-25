@@ -31,15 +31,24 @@ def after(def_name):
 
 # (name, file, regex, replacement, tests that must fail)
 MUTATIONS = [
-    ("bounty row lock", SERVICES, r"Bounty\.objects\.select_for_update\(\)\.get\(", "Bounty.objects.get(", RACES),
+    ("bounty row lock", SERVICES, r"Bounty\.objects\.select_for_update\(no_key=True\)\.get\(", "Bounty.objects.get(", RACES),
     ("poster lock in create_bounty", SERVICES, r"User\.objects\.select_for_update\(\)\.get\(pk=poster\.pk\)",
      "User.objects.get(pk=poster.pk)", RACES),
     ("user locks in accept_claim", SERVICES,
-     r"User\.objects\.select_for_update\(\)(?=\.filter\(pk__in=\{poster_id, claimant_id\})",
+     r"User\.objects\.select_for_update\(no_key=True\)(?=\.filter\(pk__in=\{poster_id, claimant_id\})",
      "User.objects", ["apps.bounties.tests_accept_gating"]),
     ("user locks in cancel_after_counterparty_revocation", SERVICES,
-     r"User\.objects\.select_for_update\(\)(?=\.filter\(\s*pk__in=\{bounty\.poster_id, claim\.claimant_id\})",
+     r"User\.objects\.select_for_update\(no_key=True\)(?=\.filter\(\s*pk__in=\{bounty\.poster_id, claim\.claimant_id\})",
      "User.objects", ["apps.bounties.tests_revocation_cancel"]),
+    # Strengthening these back to FOR UPDATE reintroduces the revocation deadlocks.
+    ("bounty lock strength", SERVICES, r"(?<=Bounty\.objects\.select_for_update\()no_key=True(?=\))", "",
+     ["apps.bounties.tests_revocation_deadlocks"]),
+    ("user lock strength in accept_claim", SERVICES,
+     r"(?<=User\.objects\.select_for_update\()no_key=True(?=\)\.filter\(pk__in=\{poster_id)", "",
+     ["apps.bounties.tests_revocation_deadlocks"]),
+    ("user lock strength in revoke_verification", "apps/accounts/moderation.py",
+     r"(?<=select_for_update\()no_key=True(?=\)\.filter\(pk__in=\{actor_id, subject_id\}\)\.order_by\(\"pk\"\)\}\n    actor, subject = rows\.get\(actor_id\), rows\.get\(subject_id\)\n    # Permission)",
+     "", ["apps.bounties.tests_revocation_deadlocks"]),
     ("create rate limit", VIEWS, after("bounty_create_view"), "", LIMITS),
     ("claim rate limit", VIEWS, after("bounty_claim_view"), "", LIMITS),
     ("report rate limit", VIEWS, after("bounty_report_view"), "", LIMITS),
