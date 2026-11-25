@@ -16,7 +16,10 @@ from apps.bounties.policies import CANCELLABLE_REVOKE_REASONS, can_moderate
 
 from .errors import InvalidState, NotPermitted
 from .identity import decrypt_card_name, hash_reg_no
-from .models import AuditEvent, CampusVerification, RevokeReason, StudentIdentity, User, VerificationMethod
+from .models import (
+    AuditEvent, CampusVerification, IdentityReview, ReviewResolution, ReviewStatus, RevokeReason,
+    StaffSource, StudentIdentity, User, VerificationMethod,
+)
 
 # Reasons a moderator may give. EMAIL_CHANGED / EXPIRED / SUPERSEDED are system-only.
 MODERATOR_REASONS = (RevokeReason.LEFT_CAMPUS, RevokeReason.VERIFICATION_INVALID, RevokeReason.POLICY_VIOLATION)
@@ -62,18 +65,24 @@ def revoke_verification(moderator_id, user_id, reason, note="", now=None):
     now = now or timezone.now()
     with transaction.atomic():
         moderator, subject = _lock(moderator_id, user_id)
-        verification = CampusVerification.objects.filter(user=subject, revoked_at__isnull=True).first()
-        if verification is None:
-            raise InvalidState("This user has no active verification.")
-        verification.revoked_at, verification.revoked_by = now, moderator
-        verification.revoke_reason, verification.revoke_note = reason, note
-        verification.save(update_fields=["revoked_at", "revoked_by", "revoke_reason", "revoke_note"])
-        AuditEvent.objects.create(
-            actor=moderator, subject=subject, action="REVOKED", reason=reason, note=note,
-            verification=verification, created_at=now,
-        )
-        if reason in CANCELLABLE_REVOKE_REASONS:
-            _notify_counterparties(subject, verification)
+        return _revoke_locked(moderator, subject, reason, note, now)
+
+
+def _revoke_locked(moderator, subject, reason, note, now):
+    """Revoke ``subject``'s active verification. The caller holds the moderator's and subject's user
+    locks, inside one transaction. Writes the AuditEvent and the counterparty notifications."""
+    verification = CampusVerification.objects.filter(user=subject, revoked_at__isnull=True).first()
+    if verification is None:
+        raise InvalidState("This user has no active verification.")
+    verification.revoked_at, verification.revoked_by = now, moderator
+    verification.revoke_reason, verification.revoke_note = reason, note
+    verification.save(update_fields=["revoked_at", "revoked_by", "revoke_reason", "revoke_note"])
+    AuditEvent.objects.create(
+        actor=moderator, subject=subject, action="REVOKED", reason=reason, note=note,
+        verification=verification, created_at=now,
+    )
+    if reason in CANCELLABLE_REVOKE_REASONS:
+        _notify_counterparties(subject, verification)
     return verification
 
 
@@ -207,3 +216,113 @@ def reveal_contact_for_moderation(actor_id, user_id, reason, now=None):
             actor=actor, subject=subject, action="CONTACT_VIEWED", reason="", note=reason, created_at=now,
         )
         return subject.email, subject.contact_handle
+
+
+def _lock_many(actor_id, *subject_ids):
+    """Lock the moderator and any number of other users together, ascending id. Returns (actor, {pk: user})."""
+    ids = {actor_id, *[i for i in subject_ids if i is not None]}
+    rows = {u.pk: u for u in User.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
+    actor = rows.get(actor_id)
+    if actor is None or not can_moderate(actor):
+        raise NotPermitted("You are not allowed to moderate.")
+    return actor, rows
+
+
+def resolve_identity_review(moderator_id, review_id, resolution, note, now=None):
+    """Close an open registration-number collision.
+
+    ``KEEP_EXISTING``  the existing holder is right; the newcomer's verification is revoked with
+                       VERIFICATION_INVALID (so they must verify again properly).
+    ``REASSIGN``       the newcomer is right: the holder's binding is released, rebound to the
+                       newcomer, and the old holder's verification is revoked (INVALID).
+    ``BOTH_LEGIT_TYPO`` nobody is wrongly bound; the review is closed and nothing else changes.
+
+    Runs in one transaction with the users locked in ascending id (moderator, claimant and the
+    current holder of the number), then the review re-read under its own lock, so two moderators
+    resolving the same review serialize and the second sees it already resolved. Every consequence
+    writes its own AuditEvent, plus an IDENTITY_REVIEW_RESOLVED row for the decision itself.
+    """
+    if resolution not in ReviewResolution.values:
+        raise InvalidState("Choose a valid resolution.")
+    note = _clean_note(note)
+    if not note:
+        raise InvalidState("Say why you decided this.")
+    now = now or timezone.now()
+    with transaction.atomic():
+        # Which users to lock: an unlocked peek that is re-validated under the locks below.
+        peek = IdentityReview.objects.filter(pk=review_id).values_list("claimant_id", "claimed_hmac").first()
+        if peek is None:
+            raise InvalidState("No such review.")
+        holder_id = StudentIdentity.objects.filter(reg_no_hmac=peek[1]).values_list("user_id", flat=True).first()
+        actor, users = _lock_many(moderator_id, peek[0], holder_id)
+
+        review = IdentityReview.objects.select_for_update().filter(pk=review_id).first()
+        if review is None or review.status != ReviewStatus.OPEN:
+            raise InvalidState("This review was already resolved.")
+        claimant = users[review.claimant_id]
+        holder_identity = StudentIdentity.objects.filter(reg_no_hmac=review.claimed_hmac).first()
+        if (holder_identity.user_id if holder_identity else None) != holder_id:
+            raise InvalidState("The binding changed while you were reviewing. Reload and try again.")
+        holder = users[holder_id] if holder_id else None
+
+        if resolution == ReviewResolution.KEEP_EXISTING:
+            if CampusVerification.objects.filter(user=claimant, revoked_at__isnull=True).exists():
+                _revoke_locked(actor, claimant, RevokeReason.VERIFICATION_INVALID, note, now)
+        elif resolution == ReviewResolution.REASSIGN:
+            if StudentIdentity.objects.filter(user=claimant).exists():
+                raise InvalidState("The newcomer already has a registration-number binding.")
+            if holder_identity is not None:
+                holder_identity.delete()
+                AuditEvent.objects.create(
+                    actor=actor, subject=holder, action="IDENTITY_RELEASED", note=note, created_at=now
+                )
+                if CampusVerification.objects.filter(user=holder, revoked_at__isnull=True).exists():
+                    _revoke_locked(actor, holder, RevokeReason.VERIFICATION_INVALID, note, now)
+            identity = StudentIdentity.objects.create(
+                user=claimant, reg_no_hmac=review.claimed_hmac, reg_no_last4=review.claimed_last4,
+                source=review.claimant_source, bound_at=now,
+            )
+            CampusVerification.objects.filter(user=claimant, revoked_at__isnull=True).update(identity=identity)
+
+        review.status, review.resolution = ReviewStatus.RESOLVED, resolution
+        review.resolved_by, review.resolved_at, review.note = actor, now, note
+        review.save(update_fields=["status", "resolution", "resolved_by", "resolved_at", "note"])
+        AuditEvent.objects.create(
+            actor=actor, subject=claimant, action="IDENTITY_REVIEW_RESOLVED", reason=resolution, note=note,
+            created_at=now,
+        )
+    return review
+
+
+def grant_staff(moderator_id, user_id, note="", now=None):
+    """Give the staff role (faculty/staff may post tasks) to an account. The badge itself still
+    requires an active campus verification where it is rendered; this only records the role."""
+    note = _clean_note(note)
+    now = now or timezone.now()
+    with transaction.atomic():
+        moderator, subject = _lock(moderator_id, user_id)
+        if subject.staff_source is not None:
+            raise InvalidState("This account already has the staff role.")
+        subject.staff_since, subject.staff_source, subject.staff_granted_by = now, StaffSource.MODERATOR, moderator
+        subject.save(update_fields=["staff_since", "staff_source", "staff_granted_by"])
+        AuditEvent.objects.create(
+            actor=moderator, subject=subject, action="STAFF_GRANTED", reason=StaffSource.MODERATOR, note=note,
+            created_at=now,
+        )
+
+
+def revoke_staff(moderator_id, user_id, note="", now=None):
+    """Remove the staff role. An allowlisted address is not re-granted by this: the allowlist is
+    consulted only when an email is confirmed."""
+    note = _clean_note(note)
+    now = now or timezone.now()
+    with transaction.atomic():
+        moderator, subject = _lock(moderator_id, user_id)
+        if subject.staff_source is None:
+            raise InvalidState("This account doesn't have the staff role.")
+        was = subject.staff_source
+        subject.staff_since = subject.staff_source = subject.staff_granted_by = None
+        subject.save(update_fields=["staff_since", "staff_source", "staff_granted_by"])
+        AuditEvent.objects.create(
+            actor=moderator, subject=subject, action="STAFF_REVOKED", reason=was, note=note, created_at=now,
+        )
