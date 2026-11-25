@@ -194,6 +194,8 @@ EMAIL_VERIFICATION_TTL_HOURS = 24
 
 # Email backend default
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Seconds per SMTP socket operation. Without it a stalled server holds the request or the tick open.
+EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="BountyBoard <notifications@bountyboard.campus>")
 
 # --- Rate limiting -------------------------------------------------------------------

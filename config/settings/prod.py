@@ -103,7 +103,8 @@ STORAGES = {
     },
 }
 
-# The scheduler secret is optional (no secret = no /internal/tick), but a weak one is worse than none.
+# The scheduler secret is optional (no secret = no /internal/tick). Only its length can be checked
+# here, so generate it randomly.
 if TICK_SECRET and len(TICK_SECRET) < 32:  # noqa: F405
     raise ImproperlyConfigured("TICK_SECRET must be at least 32 characters (e.g. `openssl rand -hex 32`).")
 

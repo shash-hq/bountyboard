@@ -54,6 +54,9 @@ class ProdSettingsFailClosedTests(SimpleTestCase):
             self.load("config.settings.test").PASSWORD_HASHERS, ["django.contrib.auth.hashers.MD5PasswordHasher"]
         )
 
+    def test_smtp_calls_are_bounded_in_production(self):
+        self.assertEqual(self.load(EMAIL_URL="smtp+tls://u:p@smtp.example.com:587").EMAIL_TIMEOUT, 10)
+
     def test_valid_environment_boots(self):
         s = self.load()
         self.assertFalse(s.DEBUG)
