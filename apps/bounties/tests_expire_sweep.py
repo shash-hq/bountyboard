@@ -1,7 +1,9 @@
 """Expiry as a real state (decision 4): the sweeper closes overdue bounties and their pending claims."""
+import unittest
 from datetime import timedelta
 from unittest import mock
 
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
@@ -57,7 +59,9 @@ class SweepTests(TestCase):
 
     def test_other_states_and_terminal_claims_are_left_alone(self):
         done = mk(self.poster, "Finished already", -3)
-        Bounty.objects.filter(pk=done.pk).update(status=BountyStatus.DONE)
+        winner = Claim.objects.create(bounty=self.live, claimant=self.c2, message="m" * 12)
+        Claim.objects.filter(pk=winner.pk).update(status=ClaimStatus.ACCEPTED, bounty=done)
+        Bounty.objects.filter(pk=done.pk).update(status=BountyStatus.DONE, accepted_claim=winner)
         cancelled = mk(self.poster, "Cancelled already", -3)
         Bounty.objects.filter(pk=cancelled.pk).update(status=BountyStatus.CANCELLED)
         withdrawn = Claim.objects.create(bounty=self.late, claimant=self.c1, message="m" * 12)
@@ -124,6 +128,7 @@ class SweepTests(TestCase):
         self.assertFalse(services.expire_bounty(self.late.pk))
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL row locks")
 class SweepVersusAcceptRaceTests(TransactionTestCase):
     """An accept that wins the bounty lock keeps the bounty; a sweep that wins makes the accept fail."""
 
@@ -141,7 +146,8 @@ class SweepVersusAcceptRaceTests(TransactionTestCase):
             Bounty.objects.select_for_update().get(pk=b.pk)  # hold the bounty row, as an accept would
             worker.start()
             wait_until_a_lock_request_is_waiting()
-            Bounty.objects.filter(pk=b.pk).update(status=BountyStatus.CLAIMED)  # the accept's effect
+            Claim.objects.filter(pk=claim.pk).update(status=ClaimStatus.ACCEPTED)  # the accept's effect
+            Bounty.objects.filter(pk=b.pk).update(status=BountyStatus.CLAIMED, accepted_claim=claim)
         worker.join(timeout=30)
         self.assertFalse(worker.is_alive(), "worker hung")
         self.assertIs(outcome.get("ok"), False, outcome)

@@ -105,7 +105,10 @@ class Bounty(models.Model):
             models.CheckConstraint(
                 condition=(
                     models.Q(status__in=[BountyStatus.CLAIMED, BountyStatus.DONE], accepted_claim__isnull=False)
-                    | models.Q(status__in=[BountyStatus.OPEN, BountyStatus.CANCELLED], accepted_claim__isnull=True)
+                    | models.Q(
+                        status__in=[BountyStatus.OPEN, BountyStatus.CANCELLED, BountyStatus.EXPIRED],
+                        accepted_claim__isnull=True,
+                    )
                 ),
                 name="accepted_claim_iff_claimed_or_done",
             ),

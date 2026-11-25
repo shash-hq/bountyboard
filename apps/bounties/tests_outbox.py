@@ -1,9 +1,11 @@
 """The outbox: delivery, retry/backoff, budget, idempotency, and no double sends under concurrency."""
+import unittest
 from datetime import timedelta
 from unittest import mock
 
 from django.core import mail
 from django.db import IntegrityError, transaction
+from django.db import connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
@@ -166,6 +168,7 @@ class OnCommitTests(TestCase):
         self.assertEqual((n.email_status, n.attempts), (EmailStatus.PENDING, 1))  # the tick will retry it
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL row locks")
 class SkipLockedTests(TransactionTestCase):
     def test_a_row_being_delivered_elsewhere_is_skipped_not_waited_for_or_sent_twice(self):
         c = accepted_claim()
