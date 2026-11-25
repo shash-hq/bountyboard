@@ -42,6 +42,15 @@ class TransitionOutboxTests(TestCase):
         [lost] = self.rows(kind=K.CLAIM_REJECTED)
         self.assertEqual((lost.recipient, lost.claim, lost.email_status), (self.c2, b, EmailStatus.NONE))
 
+    def test_the_claims_rejected_by_an_acceptance_record_when(self):
+        a = services.create_claim(self.bounty.pk, self.c1, "m" * 12)
+        b = services.create_claim(self.bounty.pk, self.c2, "m" * 12)
+        long_ago = timezone.now() - timedelta(days=1)
+        Claim.objects.filter(pk=b.pk).update(updated_at=long_ago)
+        services.accept_claim(a.pk, self.poster)
+        b.refresh_from_db()
+        self.assertGreater(b.updated_at, long_ago)
+
     def test_an_email_goes_out_on_commit_for_acceptance_only(self):
         a = services.create_claim(self.bounty.pk, self.c1, "m" * 12)
         services.create_claim(self.bounty.pk, self.c2, "m" * 12)

@@ -210,7 +210,9 @@ def accept_claim(claim_id: int, user) -> Claim:
         bounty.save(update_fields=["status", "accepted_claim", "updated_at"])
 
         # Reject all other PENDING claims on this bounty
-        Claim.objects.filter(id__in=[c.id for c in other_claims]).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in other_claims]).update(
+            status=ClaimStatus.REJECTED, updated_at=timezone.now()
+        )
 
         # I7: the outbox rows commit with the transition. Acceptance is the one kind that is emailed
         # (the claimant needs the poster's contact, and email is scarce); the rest are in-app only.
