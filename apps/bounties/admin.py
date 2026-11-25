@@ -1,5 +1,5 @@
 from django.contrib import admin, messages
-from .models import Bounty, BountyStatus, Claim, Report
+from .models import Bounty, Claim, Report
 
 
 @admin.action(description="Hide selected bounties from public board")
@@ -12,12 +12,6 @@ def hide_bounties(modeladmin, request, queryset):
 def unhide_bounties(modeladmin, request, queryset):
     count = queryset.update(is_hidden=False)
     messages.success(request, f"{count} bounties made visible.")
-
-
-@admin.action(description="Mark selected bounties as DONE")
-def mark_bounties_done(modeladmin, request, queryset):
-    count = queryset.update(status=BountyStatus.DONE)
-    messages.success(request, f"{count} bounties marked as DONE.")
 
 
 @admin.register(Bounty)
@@ -35,7 +29,7 @@ class BountyAdmin(admin.ModelAdmin):
     list_filter = ["status", "category", "is_hidden", "created_at"]
     search_fields = ["title", "description", "poster__username", "poster__email"]
     prepopulated_fields = {"slug": ("title",)}
-    actions = [hide_bounties, unhide_bounties, mark_bounties_done]
+    actions = [hide_bounties, unhide_bounties]
     readonly_fields = ["created_at", "updated_at"]
     date_hierarchy = "created_at"
 
