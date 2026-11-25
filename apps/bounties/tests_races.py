@@ -53,11 +53,12 @@ def run_together(*calls):
 
 
 def wait_until_a_lock_request_is_waiting(timeout=10.0):
-    """Block until some backend is waiting on a lock (the worker reached the row we hold)."""
+    """Block until some backend is waiting on a lock that THIS connection holds, i.e. the worker has
+    reached the row we locked. An unrelated lock wait does not count."""
     deadline = time.monotonic() + timeout
     with connection.cursor() as cur:
         while time.monotonic() < deadline:
-            cur.execute("SELECT count(*) FROM pg_locks WHERE NOT granted")
+            cur.execute("SELECT count(*) FROM pg_locks WHERE NOT granted AND pg_backend_pid() = ANY(pg_blocking_pids(pid))")
             if cur.fetchone()[0]:
                 return
             time.sleep(0.01)
@@ -76,7 +77,8 @@ def in_worker(fn):
         finally:
             connections.close_all()
 
-    t = threading.Thread(target=target)
+    # daemon: a worker stuck past the test's join timeout must not keep the test process alive
+    t = threading.Thread(target=target, daemon=True)
     return t, outcome
 
 

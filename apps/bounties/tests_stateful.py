@@ -12,14 +12,14 @@ from django.test import TestCase
 from django.utils import timezone
 from hypothesis import HealthCheck, settings
 from hypothesis import strategies as st
-from hypothesis.stateful import RuleBasedStateMachine, invariant, rule, run_state_machine_as_test
+from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, rule, run_state_machine_as_test
 
 from apps.accounts import campus
 from apps.accounts.testing import campus_verify, create_verified_user
 from apps.bounties import services
 from apps.bounties.exceptions import DomainError
 from apps.bounties.models import Bounty, BountyStatus, Claim, ClaimStatus
-from apps.bounties.policies import can_view_contact, is_campus_verified
+from apps.bounties.policies import can_view_contact, is_campus_verified, open_bounty_cap
 
 ALLOWED_BOUNTY_MOVES = {
     (BountyStatus.OPEN, BountyStatus.CLAIMED),
@@ -38,7 +38,7 @@ usually_the_owner = st.sampled_from([True, True, True, False])
 
 
 class Lifecycle(RuleBasedStateMachine):
-    reached: set = set()  # statuses seen across all examples, so the test cannot pass by doing nothing
+    moved: set = set()  # moves the rules made across all examples, so the test cannot pass by doing nothing
 
     def __init__(self):
         super().__init__()
@@ -48,6 +48,26 @@ class Lifecycle(RuleBasedStateMachine):
         self.users = [create_verified_user(f"u{i}", f"u{i}@example.org", campus=i < 3) for i in range(4)]
         self.bounty_status: dict = {}
         self.claim_status: dict = {}
+
+    @initialize()
+    def seed_a_claimed_and_an_open_bounty(self):
+        """Random sequences rarely get from nothing to an acceptance, so every run starts with one
+        bounty already CLAIMED and one OPEN with two pending claims. What is seeded does not count
+        towards the coverage guard: only moves the rules make afterwards do."""
+        for poster in (0, 1):
+            bounty = services.create_bounty(
+                self.users[poster],
+                title="Seeded bounty",
+                description="x" * 30,
+                reward=100,
+                deadline=timezone.now() + timedelta(days=2),
+            )
+            for who in {0, 1, 2} - {poster}:
+                services.create_claim(bounty.pk, self.users[who], "m" * 12)
+            if poster == 0:
+                services.accept_claim(bounty.claims.order_by("pk").first().pk, bounty.poster)
+        self.bounty_status = dict(Bounty.objects.values_list("pk", "status"))
+        self.claim_status = dict(Claim.objects.values_list("pk", "status"))
 
     def teardown(self):
         transaction.set_rollback(True)
@@ -69,14 +89,18 @@ class Lifecycle(RuleBasedStateMachine):
 
     @rule(who=people)
     def post(self, who):
-        self.attempt(
+        user = self.users[who]
+        created = self.attempt(
             services.create_bounty,
-            self.users[who],
+            user,
             title="Stateful test bounty",
             description="x" * 30,
             reward=100,
             deadline=timezone.now() + timedelta(days=2),
         )
+        if created:
+            # I4 by tier, checked when posting: a lapsed user may legitimately keep more than the lower cap.
+            assert services.count_live_open_bounties(user) <= open_bounty_cap(user)
 
     @rule(which=picks, who=people)
     def pitch(self, which, who):
@@ -151,8 +175,9 @@ class Lifecycle(RuleBasedStateMachine):
             for pk, status in model.objects.values_list("pk", "status"):
                 before = seen.get(pk, start)
                 assert before == status or (before, status) in allowed, (model.__name__, before, status)
+                if before != status:
+                    self.moved.add((model.__name__, before, status))
                 seen[pk] = status
-                self.reached.add((model.__name__, status))
 
     @invariant()
     def i6_contact_only_between_the_accepted_pair(self):
@@ -173,7 +198,7 @@ class Lifecycle(RuleBasedStateMachine):
 
 class LifecycleInvariantTests(TestCase):
     def test_invariants_hold_over_random_sequences(self):
-        Lifecycle.reached = set()
+        Lifecycle.moved = set()
         run_state_machine_as_test(
             Lifecycle,
             settings=settings(
@@ -185,5 +210,6 @@ class LifecycleInvariantTests(TestCase):
                 suppress_health_check=[HealthCheck.too_slow],
             ),
         )
-        expected = {("Bounty", s) for s in BountyStatus.values} | {("Claim", s) for s in ClaimStatus.values}
-        self.assertEqual(expected - Lifecycle.reached, set(), "some states were never exercised")
+        expected = {("Bounty", *move) for move in ALLOWED_BOUNTY_MOVES}
+        expected |= {("Claim", *move) for move in ALLOWED_CLAIM_MOVES}
+        self.assertEqual(expected - Lifecycle.moved, set(), "some transitions were never exercised")
