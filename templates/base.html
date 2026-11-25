@@ -73,6 +73,9 @@
           {% if can_moderate %}
             <a href="{% url 'bounties:mod_queue' %}" class="btn btn-sm" style="background-color: var(--pink); color: var(--white);">MOD QUEUE</a>
           {% endif %}
+          {% if can_moderate %}
+            <a href="{% url 'accounts:mod_index' %}" class="btn btn-sm">IDENTITY</a>
+          {% endif %}
           {% if can_verify_students %}
             <a href="{% url 'accounts:desk' %}" class="btn btn-sm">VERIFY DESK</a>
           {% endif %}

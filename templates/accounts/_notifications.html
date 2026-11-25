@@ -1,0 +1,21 @@
+{# The user's own in-app notifications. Messages are plain text and auto-escaped. #}
+{% if notifications %}
+<div class="brutal-card brutal-card--white">
+  <h2>NOTIFICATIONS{% if unread_notifications %} ({{ unread_notifications }} new){% endif %}</h2>
+  <ul>
+    {% for n in notifications %}
+      <li>
+        {% if not n.read_at %}<strong>New:</strong> {% endif %}{{ n.message }}
+        {% if n.bounty %}<a href="{{ n.bounty.get_absolute_url }}">View bounty</a>{% endif %}
+        <small>{{ n.created_at|date:"M d, H:i" }}</small>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if unread_notifications %}
+    <form method="post" action="{% url 'accounts:notifications_read' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn">Mark all as read</button>
+    </form>
+  {% endif %}
+</div>
+{% endif %}

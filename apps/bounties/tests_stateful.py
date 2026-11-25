@@ -14,7 +14,7 @@ from hypothesis import HealthCheck, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, rule, run_state_machine_as_test
 
-from apps.accounts import campus
+from apps.accounts import campus, moderation
 from apps.accounts.testing import campus_verify, create_verified_user
 from apps.bounties import services
 from apps.bounties.exceptions import DomainError
@@ -25,11 +25,13 @@ ALLOWED_BOUNTY_MOVES = {
     (BountyStatus.OPEN, BountyStatus.CLAIMED),
     (BountyStatus.OPEN, BountyStatus.CANCELLED),
     (BountyStatus.CLAIMED, BountyStatus.DONE),
+    (BountyStatus.CLAIMED, BountyStatus.CANCELLED),  # only after the counterparty is revoked
 }
 ALLOWED_CLAIM_MOVES = {
     (ClaimStatus.PENDING, ClaimStatus.ACCEPTED),
     (ClaimStatus.PENDING, ClaimStatus.REJECTED),
     (ClaimStatus.PENDING, ClaimStatus.WITHDRAWN),
+    (ClaimStatus.ACCEPTED, ClaimStatus.CANCELLED),  # only with the move above
 }
 
 people = st.integers(0, 3)
@@ -46,6 +48,7 @@ class Lifecycle(RuleBasedStateMachine):
         self.atomic.__enter__()
         # Users 0-2 are campus-verified, user 3 is only email-verified.
         self.users = [create_verified_user(f"u{i}", f"u{i}@example.org", campus=i < 3) for i in range(4)]
+        self.moderator = create_verified_user("mod", "mod@example.org", is_superuser=True)
         self.bounty_status: dict = {}
         self.claim_status: dict = {}
 
@@ -142,6 +145,40 @@ class Lifecycle(RuleBasedStateMachine):
             campus.supersede_active(user, timezone.now())
         else:
             campus_verify(user)
+
+    @rule()
+    def renew_lapsed_verifications(self):
+        """Lapses and revocations pile up; without this, long runs have nobody left who can accept."""
+        for user in self.users[:3]:
+            if not is_campus_verified(user):
+                campus_verify(user)
+
+    @rule(which=picks, of_poster=st.booleans(), reason=st.sampled_from(moderation.MODERATOR_REASONS))
+    def revoke_a_party(self, which, of_poster, reason):
+        """Aimed at parties of claimed bounties: revoking at random starves acceptance entirely."""
+        claimed = list(Bounty.objects.filter(status=BountyStatus.CLAIMED).order_by("pk"))
+        if claimed:
+            bounty = claimed[which % len(claimed)]
+            party = bounty.poster if of_poster else bounty.accepted_claim.claimant
+            self.attempt(moderation.revoke_verification, self.moderator.pk, party.pk, reason)
+
+    @rule(which=picks, of_poster=st.booleans(), reason=st.sampled_from(moderation.MODERATOR_REASONS))
+    def revoke_then_counterparty_cancels(self, which, of_poster, reason):
+        """The two steps in order. Left to chance they rarely line up, and the cancel path goes untested."""
+        claimed = list(Bounty.objects.filter(status=BountyStatus.CLAIMED).order_by("pk"))
+        if claimed:
+            bounty = claimed[which % len(claimed)]
+            parties = [bounty.poster, bounty.accepted_claim.claimant]
+            revoked, other = parties if of_poster else parties[::-1]
+            self.attempt(moderation.revoke_verification, self.moderator.pk, revoked.pk, reason)
+            self.attempt(services.cancel_after_counterparty_revocation, bounty.pk, other)
+
+    @rule(which=picks, by_poster=st.booleans())
+    def cancel_after_revocation(self, which, by_poster):
+        if bounty := self.pick(Bounty, which, BountyStatus.CLAIMED):
+            claim = bounty.accepted_claim
+            actor = bounty.poster if by_poster or claim is None else claim.claimant
+            self.attempt(services.cancel_after_counterparty_revocation, bounty.pk, actor)
 
     @invariant()
     def i1_at_most_one_accepted_claim(self):

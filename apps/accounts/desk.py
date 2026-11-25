@@ -70,7 +70,7 @@ def verify_in_person(verifier_id, username, presence_code_value, reg_no, card_na
         raise NotPermitted("You cannot verify yourself.")
 
     with transaction.atomic():
-        locked = {u.pk: u for u in User.objects.select_for_update().filter(pk__in=[verifier_id, subject_id]).order_by("pk")}
+        locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in=[verifier_id, subject_id]).order_by("pk")}
         verifier, subject = locked.get(verifier_id), locked.get(subject_id)
         # Permission is read from the freshly locked row, so a revoked group membership takes effect
         # immediately rather than after a stale cached permission set.

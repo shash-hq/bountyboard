@@ -35,6 +35,7 @@
     </div>
   </div>
 
+  {% include "accounts/_notifications.html" %}
   {% include "accounts/_campus_status.html" %}
 
   <!-- Dashboard 2-column or stacked view -->
@@ -152,6 +153,8 @@
                     <span class="stamp-badge stamp-cancelled">REJECTED</span>
                   {% elif c.status == 'WITHDRAWN' %}
                     <span class="stamp-badge stamp-expired">WITHDRAWN</span>
+                  {% elif c.status == 'CANCELLED' %}
+                    <span class="stamp-badge stamp-cancelled">CANCELLED</span>
                   {% endif %}
                 </div>
               </div>

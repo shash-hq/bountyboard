@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Identity reviews | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card">
+    <h1 class="page-title">IDENTITY REVIEWS</h1>
+    <p>Someone verified with a registration number that is already bound to another account. They were verified anyway, without a binding; decide who is right. If it is only a typing mistake, leave the review open: correcting a number isn't supported yet.</p>
+    <p><a href="{% url 'accounts:mod_index' %}">Back to lookup</a></p>
+  </div>
+  {% for r in reviews %}
+    <div class="brutal-card">
+      <p><strong>{{ r.claimant.username }}</strong> claimed a number ending …{{ r.claimed_last4 }} ({{ r.get_claimant_source_display }}), {{ r.created_at|date:"M d, H:i" }}.</p>
+      <p>Currently bound to:
+        {% if r.holder %}<a href="{% url 'accounts:mod_user' r.holder.pk %}">{{ r.holder.username }}</a>{% else %}nobody (the binding was released){% endif %}
+        &middot; <a href="{% url 'accounts:mod_user' r.claimant.pk %}">open {{ r.claimant.username }}</a>
+      </p>
+      <form method="post" action="{% url 'accounts:mod_resolve_review' r.pk %}" novalidate>
+        {% csrf_token %}
+        {{ r.form.resolution.label_tag }} {{ r.form.resolution }}
+        {{ r.form.note.label_tag }} {{ r.form.note }}
+        <button type="submit" class="btn btn-sm btn-primary">RESOLVE</button>
+      </form>
+    </div>
+  {% empty %}
+    <div class="brutal-card"><p>No open reviews.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

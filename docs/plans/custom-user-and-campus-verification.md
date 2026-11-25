@@ -49,7 +49,7 @@ Methods enum: `CAMPUS_EMAIL`, `IN_PERSON`. `VOUCH` is **not** added until it is 
 - `resolution` values:
   - `KEEP_EXISTING`: the newcomer is asked to re-enter, or a moderator revokes them with `VERIFICATION_INVALID`.
   - `REASSIGN`: release the binding, rebind it to the newcomer, and revoke the old holder with `VERIFICATION_INVALID`.
-  - `BOTH_LEGIT_TYPO`: the newcomer re-enters their reg no.
+  - `BOTH_LEGIT_TYPO`: the newcomer re-enters their reg no. *(Not offered yet: see deviation 10.)*
 - Partial unique `(claimant) WHERE status='OPEN'`: at most one open review per user.
 - Resolutions run through a service, inside one transaction with an `AuditEvent`. The moderator queue lists open reviews.
 
@@ -226,6 +226,14 @@ Manual run-through via `runserver` and the console email backend (signup is open
 5. **Accounts errors** live in `apps/accounts/errors.py` (shaped like PR 2's `DomainError`) until PR 2 merges; then re-parent them. The moderator check is a local helper with `can_moderate`'s rule, to be swapped likewise.
 6. **Account deletion is anonymize-in-place, not hard delete** (follow-up PR `pr4b-deletion-binding`; resolves open question 3). `Bounty.poster` and `Claim.claimant` are CASCADE, so a hard delete would erase counterparties' finished history and, for an accepted claimant, violate the I2 check constraint. The row is scrubbed and deactivated instead (`deleted_at`, placeholder username/email, unusable password, no groups, card name and campus-email snapshot wiped, claim contact cleared). The `StudentIdentity` binding and revocation history stay, so deletion can never free a registration number or erase a ban, and no nullable-user migration is needed. CLAIMED work (as poster or accepted claimant) blocks deletion; OPEN bounties and PENDING claims are cancelled/withdrawn through the bounties services. The interim `ensure_self_deletion_allowed` guard from PR 4 is removed because it no longer protects anything. There is still no "delete my account" page.
 7. **No admin actions yet.** The campus models are view-only in the admin; moderator actions arrive as views in PR 7.
+
+## Deviations from this plan (found while building PR 7)
+
+8. **`Notification` is in `apps/bounties`** and has only the in-app columns (`idempotency_key` unique, `read_at`); `attempts`/`delivered_at` arrive with the outbox. Kinds: `COUNTERPARTY_REVOKED`, `COUNTERPARTY_CANCELLED` (the cancel also writes one row to the other party, per I7).
+9. **`cancel_after_counterparty_revocation` is policy-gated, not time-boxed**: the other party's latest verification row must be revoked as `VERIFICATION_INVALID` or `POLICY_VIOLATION` and they must have no active row. `LEFT_CAMPUS`, expiry and re-verification don't qualify. Accepted claim -> new `ClaimStatus.CANCELLED`.
+10. **`IDENTITY_REVIEW_RESOLVED`** is a new `AuditAction`. `BOTH_LEGIT_TYPO` is refused for now: there is no re-entry flow for a user who is already verified without a binding, so such a review stays open. Build that flow before offering the resolution.
+11. **`lookup_by_reg_no` and `reveal_contact_for_moderation` require a reason** (stored in `AuditEvent.note`), and lookups are audited on a miss too (`reason` = `MATCH`/`NO_MATCH`).
+12. **The Staff badge is shown on the bounty detail page only.** The board doesn't render posters, so there is no N+1 to avoid.
 
 ## Open questions (my default, if you don't say otherwise)
 

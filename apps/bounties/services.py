@@ -5,7 +5,15 @@ from django.utils import timezone
 
 from .exceptions import DomainError, InvalidTransition, LimitReached, NotPermitted  # noqa: F401 (re-exported)
 from .models import Bounty, BountyStatus, Claim, ClaimStatus, Report
-from .policies import can_moderate, is_campus_verified, open_bounty_cap
+from . import inbox
+from .models import NotificationKind
+from .policies import (
+    can_cancel_after_counterparty_revocation,
+    can_moderate,
+    counterparty_of,
+    is_campus_verified,
+    open_bounty_cap,
+)
 from .notifications import (
     send_claim_accepted_notification,
     send_claim_rejected_notification,
@@ -15,12 +23,15 @@ from .notifications import (
 def _lock_bounty(bounty_id: int) -> Bounty:
     """Lock the bounty row (FIRST in the fixed lock order: bounty -> claims -> user).
 
+    FOR NO KEY UPDATE, here and on user rows: a revocation inserts notifications whose foreign keys
+    point at the bounty and the other party, and those checks would deadlock against FOR UPDATE.
+
     Every transition that touches a bounty or one of its claims takes this lock before
     anything else and re-reads state afterwards, so concurrent transitions on the same
     bounty are serialized and each one validates against the committed result of the last.
     """
     try:
-        return Bounty.objects.select_for_update().get(id=bounty_id)
+        return Bounty.objects.select_for_update(no_key=True).get(id=bounty_id)
     except Bounty.DoesNotExist:
         raise InvalidTransition("Bounty does not exist.")
 
@@ -133,7 +144,7 @@ def _require_both_campus_verified(poster_id: int, claimant_id: int) -> None:
     contact released to someone whose verification was revoked before the accept committed.
     """
     User = get_user_model()
-    locked = {u.pk: u for u in User.objects.select_for_update().filter(pk__in={poster_id, claimant_id}).order_by("pk")}
+    locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={poster_id, claimant_id}).order_by("pk")}
     poster, claimant = locked.get(poster_id), locked.get(claimant_id)
     now = timezone.now()
     if poster is None or not poster.is_active or not is_campus_verified(poster, now):
@@ -276,6 +287,53 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
             .values_list("id", flat=True)
         )
         Claim.objects.filter(id__in=pending_ids).update(status=ClaimStatus.REJECTED)
+    return bounty
+
+
+def cancel_after_counterparty_revocation(bounty_id: int, user) -> Bounty:
+    """One party walks away from a CLAIMED bounty because the other's verification was revoked.
+
+    CLAIMED -> CANCELLED, the accepted claim -> CANCELLED and ``accepted_claim`` -> NULL, which is
+    what keeps I2 (a bounty is CLAIMED iff it points at an ACCEPTED claim). Lock order: bounty,
+    the accepted claim, then both users in ascending id; the policy is evaluated on those locked
+    rows, so a re-verification that commits first makes the cancel fail, and a revoke that commits
+    first makes it succeed. The other party gets one in-app notification in the same transaction.
+    """
+    with transaction.atomic():
+        bounty = _lock_bounty(bounty_id)
+        if bounty.status != BountyStatus.CLAIMED or bounty.accepted_claim_id is None:
+            raise InvalidTransition("Only a claimed bounty can be cancelled this way.")
+        claim = _lock_claim(bounty.accepted_claim_id)
+        if claim.status != ClaimStatus.ACCEPTED:
+            raise InvalidTransition("This bounty has no accepted claim to cancel.")
+        if user.id not in (bounty.poster_id, claim.claimant_id):
+            raise NotPermitted("Only the two parties to this bounty can cancel it.")
+
+        # Users last, ascending id. The returned rows are the locked, fresh ones.
+        User = get_user_model()
+        locked = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(
+            pk__in={bounty.poster_id, claim.claimant_id}).order_by("pk")}
+        bounty.accepted_claim = claim
+        claim.claimant = locked[claim.claimant_id]
+        bounty.poster = locked[bounty.poster_id]
+        actor = locked[user.id]
+        if not can_cancel_after_counterparty_revocation(actor, bounty):
+            raise NotPermitted(
+                "You can cancel only after the other person's campus verification was revoked "
+                "for an invalid verification or a policy violation."
+            )
+        other = counterparty_of(actor, bounty)
+
+        claim.status = ClaimStatus.CANCELLED
+        claim.save(update_fields=["status", "updated_at"])
+        bounty.status = BountyStatus.CANCELLED
+        bounty.accepted_claim = None
+        bounty.save(update_fields=["status", "accepted_claim", "updated_at"])
+        inbox.notify(
+            other, NotificationKind.COUNTERPARTY_CANCELLED,
+            f"{actor.username} cancelled '{bounty.title}' after your campus verification was revoked.",
+            idempotency_key=f"cancel-after-revocation:{bounty.pk}:{claim.pk}", bounty=bounty,
+        )
     return bounty
 
 

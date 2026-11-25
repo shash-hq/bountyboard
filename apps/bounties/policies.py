@@ -13,7 +13,7 @@ from django.conf import settings
 
 from apps.accounts import campus
 
-from .models import ClaimStatus
+from .models import BountyStatus, ClaimStatus
 
 
 def is_campus_verified(user, now=None) -> bool:
@@ -74,10 +74,14 @@ def can_verify_students(user) -> bool:
 
 
 def can_view_hidden_bounty(user, bounty) -> bool:
-    """A hidden bounty is visible only to its poster and to moderators."""
+    """A hidden bounty is visible to its poster, to moderators, and to a claimant who was accepted on it
+    (still ACCEPTED, or CANCELLED after acceptance): they have notifications linking to it and may need
+    to cancel it there. Seeing the page does not include the claim list."""
     if not getattr(user, "is_authenticated", False):
         return False
-    return user.id == bounty.poster_id or can_moderate(user)
+    if user.id == bounty.poster_id or can_moderate(user):
+        return True
+    return bounty.claims.filter(claimant=user, status__in=[ClaimStatus.ACCEPTED, ClaimStatus.CANCELLED]).exists()
 
 
 def can_view_claims(user, bounty) -> bool:
@@ -85,4 +89,52 @@ def can_view_claims(user, bounty) -> bool:
 
     Seeing the list is not seeing contact: that stays behind ``can_view_contact``.
     """
-    return can_view_hidden_bounty(user, bounty)
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return user.id == bounty.poster_id or can_moderate(user)
+
+
+# Revocation reasons after which the *other* party may walk away from an accepted bounty. LEFT_CAMPUS
+# is deliberately absent: leaving campus isn't a reason to cancel someone else's task.
+CANCELLABLE_REVOKE_REASONS = ("VERIFICATION_INVALID", "POLICY_VIOLATION")
+
+
+def counterparty_of(user, bounty):
+    """The other party of an accepted bounty, or None if ``user`` isn't one of its two parties."""
+    accepted = bounty.accepted_claim
+    if accepted is None or accepted.status != ClaimStatus.ACCEPTED:
+        return None
+    if user.id == bounty.poster_id:
+        return accepted.claimant
+    if user.id == accepted.claimant_id:
+        return bounty.poster
+    return None
+
+
+def can_cancel_after_counterparty_revocation(user, bounty, now=None) -> bool:
+    """May ``user`` cancel this CLAIMED bounty because the *other* party's verification was revoked?
+
+    True only when the bounty is CLAIMED, ``user`` is one party, and the other party (a) holds no
+    active campus verification and (b) their most recent verification row was revoked for an
+    invalid verification or a policy violation. An expired or superseded row doesn't qualify, and a
+    party who has since re-verified is active again. Nothing is recorded against ``user``.
+    """
+    from apps.accounts.models import CampusVerification
+
+    if not getattr(user, "is_authenticated", False) or bounty.status != BountyStatus.CLAIMED:
+        return False
+    other = counterparty_of(user, bounty)
+    if other is None or is_campus_verified(other, now):
+        return False
+    latest = CampusVerification.objects.filter(user=other).order_by("-verified_at", "-pk").first()
+    return latest is not None and latest.revoke_reason in CANCELLABLE_REVOKE_REASONS
+
+
+def has_staff_badge(user, now=None) -> bool:
+    """Show the "Staff" badge for ``user``? They hold the staff role AND are campus-verified now.
+
+    Both, because the role alone is a moderator's note about a person while the badge tells other
+    students "this is a real, checked member of campus". A lapsed or revoked verification hides it
+    without touching the role.
+    """
+    return getattr(user, "staff_source", None) is not None and is_campus_verified(user, now)

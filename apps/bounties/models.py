@@ -30,6 +30,7 @@ class ClaimStatus(models.TextChoices):
     ACCEPTED = "ACCEPTED", "ACCEPTED"
     REJECTED = "REJECTED", "REJECTED"
     WITHDRAWN = "WITHDRAWN", "WITHDRAWN"
+    CANCELLED = "CANCELLED", "CANCELLED"  # an ACCEPTED claim ended by the counterparty-revocation cancel
 
 
 class ReportReason(models.TextChoices):
@@ -238,3 +239,35 @@ class Report(models.Model):
 
     def __str__(self):
         return f"Report on {self.bounty.title} by {self.reporter.username}"
+
+
+class NotificationKind(models.TextChoices):
+    COUNTERPARTY_REVOKED = "COUNTERPARTY_REVOKED", "Counterparty lost campus verification"
+    COUNTERPARTY_CANCELLED = "COUNTERPARTY_CANCELLED", "Counterparty cancelled after a verification revocation"
+
+
+class Notification(models.Model):
+    """In-app notification row, shaped like the outbox's: one row per (event, recipient).
+
+    `idempotency_key` is unique, so a retried transition or a double submit cannot notify twice.
+    Rows are written inside the same transaction as the state change they describe (I7), which is
+    why creation lives in `inbox.notify` and callers must already be in `transaction.atomic()`.
+    There is no delivery loop yet: the email columns (attempts, delivered_at) arrive with the outbox.
+    """
+
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    kind = models.CharField(max_length=32, choices=NotificationKind.choices)
+    bounty = models.ForeignKey(
+        Bounty, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    message = models.CharField(max_length=300)
+    idempotency_key = models.CharField(max_length=120, unique=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["recipient", "read_at", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.kind} for {self.recipient_id}"

@@ -34,7 +34,7 @@
       </div>
 
       <div style="display: flex; gap: var(--spacing-4); flex-wrap: wrap; margin-top: var(--spacing-3); font-size: var(--text-xs); color: var(--muted-ink); border-bottom: 2px dashed var(--ink); padding-bottom: var(--spacing-3);">
-        <div>Posted by: <strong>{{ bounty.poster.username }}</strong></div>
+        <div>Posted by: <strong>{{ bounty.poster.username }}</strong>{% if poster_staff_badge %} <span class="stamp-badge stamp-claimed">STAFF</span>{% endif %}</div>
         <div>Created: <strong>{{ bounty.created_at|date:"M d, Y H:i" }}</strong></div>
         <div>Deadline: <strong>{{ bounty.deadline|date:"M d, Y H:i" }} ({{ bounty.deadline|time_left }})</strong></div>
       </div>
@@ -77,6 +77,16 @@
       {% endif %}
     </div>
 
+    {% if can_cancel_revoked %}
+      <div class="brutal-card brutal-card--yellow">
+        <p>The other person's campus verification was revoked. You can cancel this bounty; nothing is recorded against you.</p>
+        <form action="{% url 'bounties:cancel_revoked' bounty.pk %}" method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-danger">CANCEL THIS BOUNTY</button>
+        </form>
+      </div>
+    {% endif %}
+
     <!-- CLAIMS SECTION -->
     {% if is_poster or perms.bounties.moderate %}
       <div class="claims-section">
@@ -108,6 +118,8 @@
                     <span class="stamp-badge stamp-cancelled">REJECTED</span>
                   {% elif c.status == 'WITHDRAWN' %}
                     <span class="stamp-badge stamp-expired">WITHDRAWN</span>
+                  {% elif c.status == 'CANCELLED' %}
+                    <span class="stamp-badge stamp-cancelled">CANCELLED</span>
                   {% endif %}
                 </div>
               </div>
@@ -203,6 +215,8 @@
             </p>
           {% elif user_claim.status == 'WITHDRAWN' %}
             <span class="stamp-badge stamp-expired">CLAIM WITHDRAWN</span>
+          {% elif user_claim.status == 'CANCELLED' %}
+            <span class="stamp-badge stamp-cancelled">CLAIM CANCELLED</span>
           {% endif %}
         </div>
       </div>
