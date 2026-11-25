@@ -14,10 +14,6 @@ from .policies import (
     is_campus_verified,
     open_bounty_cap,
 )
-from .notifications import (
-    send_claim_accepted_notification,
-    send_claim_rejected_notification,
-)
 
 
 def _lock_bounty(bounty_id: int) -> Bounty:
@@ -128,6 +124,12 @@ def create_claim(bounty_id: int, claimant, message: str) -> Claim:
 
         claim = Claim(bounty=bounty, claimant=claimant, message=message)
         claim.save()
+        # No claimant contact in the text: nothing is revealed before acceptance.
+        inbox.notify(
+            bounty.poster, NotificationKind.CLAIM_RECEIVED,
+            f"{claimant.username} claimed '{bounty.title}'. Open the bounty to review the claim.",
+            f"claim-received:{claim.pk}", bounty=bounty, claim=claim,
+        )
     return claim
 
 
@@ -203,10 +205,19 @@ def accept_claim(claim_id: int, user) -> Claim:
         # Reject all other PENDING claims on this bounty
         Claim.objects.filter(id__in=[c.id for c in other_claims]).update(status=ClaimStatus.REJECTED)
 
-    # Dispatch notifications after transaction commits
-    transaction.on_commit(lambda: send_claim_accepted_notification(claim))
-    for other in other_claims:
-        transaction.on_commit(lambda c=other: send_claim_rejected_notification(c))
+        # I7: the outbox rows commit with the transition. Acceptance is the one kind that is emailed
+        # (the claimant needs the poster's contact, and email is scarce); the rest are in-app only.
+        inbox.notify(
+            claim.claimant, NotificationKind.CLAIM_ACCEPTED,
+            f"{bounty.poster.username} accepted your claim on '{bounty.title}'. Their contact details are on the bounty page.",
+            f"claim-accepted:{claim.pk}", bounty=bounty, claim=claim, email=True,
+        )
+        for other in other_claims:
+            inbox.notify(
+                other.claimant, NotificationKind.CLAIM_REJECTED,
+                f"Your claim on '{bounty.title}' was not chosen.",
+                f"claim-rejected:{other.pk}", bounty=bounty, claim=other,
+            )
 
     return claim
 
@@ -225,15 +236,18 @@ def reject_claim(claim_id: int, user) -> Claim:
 
         claim.status = ClaimStatus.REJECTED
         claim.save(update_fields=["status", "updated_at"])
-
-    send_claim_rejected_notification(claim)
+        inbox.notify(
+            claim.claimant, NotificationKind.CLAIM_REJECTED,
+            f"Your claim on '{bounty.title}' was not chosen.",
+            f"claim-rejected:{claim.pk}", bounty=bounty, claim=claim,
+        )
     return claim
 
 
 def withdraw_claim(claim_id: int, user) -> Claim:
     """Claimant withdraws their own pending claim."""
     with transaction.atomic():
-        _lock_bounty(_bounty_id_of_claim(claim_id))
+        bounty = _lock_bounty(_bounty_id_of_claim(claim_id))
         claim = _lock_claim(claim_id)
 
         if user.id != claim.claimant_id:
@@ -244,6 +258,11 @@ def withdraw_claim(claim_id: int, user) -> Claim:
 
         claim.status = ClaimStatus.WITHDRAWN
         claim.save(update_fields=["status", "updated_at"])
+        inbox.notify(
+            bounty.poster, NotificationKind.CLAIM_WITHDRAWN,
+            f"{claim.claimant.username} withdrew their claim on '{bounty.title}'.",
+            f"claim-withdrawn:{claim.pk}", bounty=bounty, claim=claim,
+        )
     return claim
 
 
@@ -260,6 +279,13 @@ def mark_bounty_done(bounty_id: int, user) -> Bounty:
 
         bounty.status = BountyStatus.DONE
         bounty.save(update_fields=["status", "updated_at"])
+        accepted = bounty.accepted_claim
+        if accepted is not None:
+            inbox.notify(
+                accepted.claimant, NotificationKind.BOUNTY_DONE,
+                f"{bounty.poster.username} marked '{bounty.title}' as done. Settle payment offline.",
+                f"bounty-done:{bounty.pk}", bounty=bounty, claim=accepted,
+            )
     return bounty
 
 
@@ -277,13 +303,18 @@ def cancel_bounty(bounty_id: int, user) -> Bounty:
         bounty.status = BountyStatus.CANCELLED
         bounty.save(update_fields=["status", "updated_at"])
         # Also reject any pending claims, in the same transaction, under the bounty lock
-        pending_ids = list(
-            Claim.objects.select_for_update()
+        pending = list(
+            Claim.objects.select_for_update().select_related("claimant")
             .filter(bounty=bounty, status=ClaimStatus.PENDING)
             .order_by("id")
-            .values_list("id", flat=True)
         )
-        Claim.objects.filter(id__in=pending_ids).update(status=ClaimStatus.REJECTED)
+        Claim.objects.filter(id__in=[c.id for c in pending]).update(status=ClaimStatus.REJECTED)
+        for c in pending:
+            inbox.notify(
+                c.claimant, NotificationKind.BOUNTY_CANCELLED,
+                f"'{bounty.title}' was cancelled by its poster.",
+                f"bounty-cancelled:{bounty.pk}:{c.pk}", bounty=bounty, claim=c,
+            )
     return bounty
 
 

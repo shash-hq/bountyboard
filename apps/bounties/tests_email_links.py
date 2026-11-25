@@ -8,12 +8,9 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.bounties.models import Bounty, Claim
-from apps.bounties.notifications import (
-    absolute_url,
-    send_claim_accepted_notification,
-    send_claim_received_notification,
-    send_claim_rejected_notification,
-)
+from apps.bounties import emails, inbox, outbox
+from apps.bounties.models import NotificationKind
+from apps.bounties.notifications import absolute_url
 
 User = get_user_model()
 
@@ -30,24 +27,24 @@ class EmailLinkTests(TestCase):
         self.claim = Claim.objects.create(bounty=self.bounty, claimant=self.claimant, message="m" * 12)
 
     def body(self):
+        from django.db import transaction
+
+        with transaction.atomic():
+            inbox.notify(self.claimant, NotificationKind.CLAIM_ACCEPTED, "accepted", "links", bounty=self.bounty,
+                         claim=self.claim, email=True)
+        mail.outbox.clear()
+        self.assertEqual(outbox.deliver_one(), "sent")
         self.assertEqual(len(mail.outbox), 1)
         return mail.outbox[0].body
 
     def test_absolute_url_joins_without_a_double_slash(self):
         self.assertEqual(absolute_url("/x/"), "https://board.example.org/x/")
 
-    def test_received_email_links_to_the_bounty_on_site_url(self):
-        send_claim_received_notification(self.claim)
+    def test_accepted_email_links_to_the_bounty_on_site_url_with_no_hardcoded_host(self):
         body = self.body()
         self.assertIn(f"https://board.example.org{self.bounty.get_absolute_url()}", body)
         self.assertNotIn("bountyboard.campus", body)
 
-    def test_rejected_email_links_to_the_board_on_site_url(self):
-        send_claim_rejected_notification(self.claim)
-        body = self.body()
-        self.assertIn("https://board.example.org/", body)
-        self.assertNotIn("bountyboard.campus", body)
-
-    def test_accepted_email_has_no_hardcoded_host(self):
-        send_claim_accepted_notification(self.claim)
-        self.assertNotIn("bountyboard.campus", self.body())
+    def test_only_acceptance_has_an_email_renderer(self):
+        """Email is scarce: every other kind is in-app only, so nothing else can be rendered or sent."""
+        self.assertEqual(set(emails.RENDERERS), {"CLAIM_ACCEPTED"})

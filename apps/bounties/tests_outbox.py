@@ -25,6 +25,8 @@ def accepted_claim(suffix="a"):
                               deadline=timezone.now() + timedelta(days=3))
     c = Claim.objects.create(bounty=b, claimant=claimant, message="m" * 12)
     services.accept_claim(c.pk, poster)
+    Notification.objects.filter(bounty=b).delete()  # accept_claim queued its own row; tests queue theirs
+    mail.outbox.clear()
     c.refresh_from_db()
     return c
 

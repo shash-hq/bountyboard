@@ -13,7 +13,6 @@ from config.http import safe_referer
 
 from .forms import BountyForm, ClaimForm, ReportForm
 from .models import Bounty, BountyStatus, Category, Claim, ClaimStatus, Report
-from .notifications import send_claim_received_notification
 from .exceptions import DomainError
 from .policies import (
     can_moderate,
@@ -298,7 +297,6 @@ def bounty_claim_view(request, pk):
                 request.user,
                 message=form.cleaned_data["message"],
             )
-            send_claim_received_notification(claim)
             messages.success(
                 request,
                 f"Your claim on '{bounty.title}' was submitted! The poster will review it. If they accept, you'll both see each other's contact details.",
