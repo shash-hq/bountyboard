@@ -97,8 +97,8 @@ class ExpireLapsedTests(TestCase):
 
 @unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL row locks")
 class ExpireVersusRenewalRaceTests(TransactionTestCase):
-    """If a renewal (a fresh row, old one superseded) commits while the sweeper waits for the user
-    lock, the sweeper must not touch the new row."""
+    """If the row is renewed (here: its verified_at moved forward) while the sweeper waits for the user
+    lock, the sweeper must re-check and leave it alone."""
 
     def test_the_sweeper_rechecks_under_the_user_lock(self):
         from django.db import transaction
@@ -183,7 +183,7 @@ class RenewalReminderTests(TestCase):
         [m] = mail.outbox
         self.assertEqual(m.to, [u.email])
         self.assertIn("/accounts/renew/", m.body)
-        self.assertNotIn("/accounts/renew/1/", m.body)  # a page to sign in to, never a token link
+        self.assertNotIn(f"/accounts/renew/{u.pk}/", m.body)  # a page to sign in to, never a token link
 
     def test_a_gmail_user_is_told_to_visit_a_desk_instead(self):
         from django.core import mail

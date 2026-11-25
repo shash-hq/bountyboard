@@ -11,7 +11,7 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from .models import AuditEvent, CampusVerification, RevokeReason, User
@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 
 
 REMINDER_KEY = "renewal-reminder:"
+# Held while the daily count is read and the row inserted, so overlapping ticks cannot both take the
+# last slot. Transaction-scoped, and nothing is sent while it is held. PostgreSQL only.
+REMINDER_BUDGET_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtextextended('accounts.renewal.budget', 0))"
+
+
+def _reminded_since(now):
+    from apps.bounties.models import Notification, NotificationKind
+
+    return Notification.objects.filter(
+        kind=NotificationKind.RENEWAL_REMINDER, created_at__gt=now - timedelta(hours=24)
+    ).count()
 
 
 def reminder_verification_pk(idempotency_key: str) -> int:
@@ -71,15 +82,12 @@ def remind_expiring(now=None, limit=None) -> int:
     outbox, which has its own daily budget on top.
     """
     from apps.bounties import inbox
-    from apps.bounties.models import Notification, NotificationKind
+    from apps.bounties.models import NotificationKind
 
     now = now or timezone.now()
     cutoff = _cutoff(now)
     window_end = cutoff + timedelta(days=settings.RENEWAL_REMINDER_DAYS)
-    already = Notification.objects.filter(
-        kind=NotificationKind.RENEWAL_REMINDER, created_at__gt=now - timedelta(hours=24)
-    ).count()
-    budget = min(limit or settings.RENEWAL_REMINDERS_PER_DAY, settings.RENEWAL_REMINDERS_PER_DAY - already)
+    budget = min(limit or settings.RENEWAL_REMINDERS_PER_DAY, settings.RENEWAL_REMINDERS_PER_DAY - _reminded_since(now))
     if budget <= 0:
         return 0
     due = list(
@@ -94,6 +102,11 @@ def remind_expiring(now=None, limit=None) -> int:
     for pk, user_id in due:
         try:
             with transaction.atomic():
+                if connection.vendor == "postgresql":
+                    with connection.cursor() as cursor:
+                        cursor.execute(REMINDER_BUDGET_LOCK_SQL)
+                if _reminded_since(now) >= settings.RENEWAL_REMINDERS_PER_DAY:
+                    break
                 user = User.objects.select_for_update(no_key=True).get(pk=user_id)
                 row = CampusVerification.objects.filter(
                     pk=pk, revoked_at__isnull=True, renewal_reminder_sent_at__isnull=True, verified_at__gt=cutoff,
@@ -107,6 +120,7 @@ def remind_expiring(now=None, limit=None) -> int:
                     user, NotificationKind.RENEWAL_REMINDER,
                     f"Your campus verification expires on {lapses:%b %d, %Y}. Renew it from your dashboard.",
                     f"{REMINDER_KEY}{row.pk}", email=True, now=now,
+                    deliver_now=False,  # a batch would run past the tick's time budget; drain() sends them
                 )
                 sent += 1
         except Exception:  # noqa: BLE001

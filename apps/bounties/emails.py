@@ -51,6 +51,8 @@ def renewal_reminder(n):
     verification = reminder_verification_pk(n.idempotency_key)
     if not campus.active_verifications().filter(pk=verification, user=user).exists():
         raise Obsolete("that verification is no longer about to lapse")
+    if not user.is_active or user.email_verified_at is None:
+        raise Obsolete("the account can no longer renew")
     subject = "[Bounty Board] Your campus verification expires soon"
     if campus.campus_email_allowed(user.email):
         action = (
@@ -59,8 +61,9 @@ def renewal_reminder(n):
         )
     else:
         action = (
-            "To renew, visit a verification desk with your LPU ID card (your dashboard shows the code "
-            "to bring), or ask a moderator how to verify with a campus email address.\n"
+            "To renew, visit a verification desk with your LPU ID card once it has lapsed (your "
+            "dashboard then shows the code to bring), or ask a moderator how to verify with a campus "
+            "email address.\n"
         )
     body = (
         f"Hi {user.username},\n\n"

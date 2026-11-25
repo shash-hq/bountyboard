@@ -1,13 +1,17 @@
 """A renewal reminder must still be true when it is sent, reach everyone due, and name the right day."""
+import unittest
 from datetime import datetime, timedelta, timezone as dt_timezone
+from unittest import mock
 
 from django.conf import settings
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from apps.bounties import outbox
-from apps.bounties.models import EmailStatus, Notification
+from apps.bounties import inbox, outbox
+from apps.bounties.models import EmailStatus, Notification, NotificationKind
+from apps.bounties.tests_races import in_worker, wait_until_a_lock_request_is_waiting
 
 from . import expiry, moderation
 from .deletion import delete_account
@@ -57,6 +61,11 @@ class StaleReminderTests(TestCase):
         delete_account(user.pk)
         self.assert_dropped()
 
+    def test_not_after_the_account_was_deactivated(self):
+        user = self.queue_reminder()
+        User.objects.filter(pk=user.pk).update(is_active=False)
+        self.assert_dropped()
+
 
 class ReminderBatchTests(TestCase):
     @override_settings(RENEWAL_REMINDERS_PER_DAY=1)
@@ -76,3 +85,53 @@ class ReminderDateTests(TestCase):
         campus_verify(user, verified_at=now - TTL + timedelta(days=5))
         expiry.remind_expiring(now)
         self.assertIn("expires on Mar 07, 2027", Notification.objects.get().message)
+
+
+class ReminderDeliveryTests(TestCase):
+    def test_the_sweep_only_queues_and_leaves_sending_to_the_bounded_drain(self):
+        expiring_user("soon")
+        mail.outbox.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            expiry.remind_expiring()
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(Notification.objects.get().email_status, EmailStatus.PENDING)
+
+    @override_settings(RENEWAL_REMINDERS_PER_DAY=1)
+    def test_unconfirmed_accounts_do_not_use_up_the_batch_either(self):
+        unconfirmed = expiring_user("unconfirmed", days_left=2)
+        User.objects.filter(pk=unconfirmed.pk).update(email_verified_at=None)
+        active = expiring_user("active", days_left=10)
+        self.assertEqual(expiry.remind_expiring(), 1)
+        self.assertEqual(Notification.objects.get().recipient, active)
+
+    @override_settings(RENEWAL_REMINDERS_PER_DAY=2)
+    def test_the_cap_is_recounted_for_every_reminder(self):
+        for name in ("one", "two"):
+            expiring_user(name)
+        other = create_verified_user("other", "other@gmail.com", PW)
+        real = inbox.notify
+
+        def another_tick_queues_one_too(*args, **kwargs):
+            result = real(*args, **kwargs)
+            if args[0] != other and Notification.objects.count() == 1:
+                real(other, NotificationKind.RENEWAL_REMINDER, "m", "renewal-reminder:999999")
+            return result
+
+        with mock.patch("apps.bounties.inbox.notify", side_effect=another_tick_queues_one_too):
+            self.assertEqual(expiry.remind_expiring(), 1)
+        self.assertEqual(Notification.objects.count(), 2)
+
+
+@unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL advisory locks")
+class ReminderCapLockTests(TransactionTestCase):
+    def test_a_second_tick_waits_for_the_budget(self):
+        expiring_user("soon")
+        worker, outcome = in_worker(expiry.remind_expiring)
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute(expiry.REMINDER_BUDGET_LOCK_SQL)
+            worker.start()
+            wait_until_a_lock_request_is_waiting()
+        worker.join(timeout=30)
+        self.assertFalse(worker.is_alive(), "worker hung")
+        self.assertEqual(outcome.get("ok"), 1, outcome)
