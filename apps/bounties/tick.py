@@ -2,7 +2,7 @@
 
 A GitHub Actions cron calls it every ~10 minutes (the free web tier has no workers or cron, and
 sleeps when idle, so the call also wakes it). Each call, in order: closes overdue bounties, closes lapsed campus
-verifications, then drains the email outbox. Both are idempotent and safe to run concurrently, so an overlapping or
+verifications and queues renewal reminders, then drains the email outbox. All are idempotent and safe to run concurrently, so an overlapping or
 repeated call does no harm. Running queries also keeps the free database from pausing.
 
 Authentication is a shared secret in ``X-Tick-Secret``, compared in constant time. With no secret

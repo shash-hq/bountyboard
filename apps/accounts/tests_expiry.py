@@ -1,8 +1,10 @@
 """Closing lapsed verifications: recorded, audited, idempotent, and never what grants/denies access."""
+import unittest
 from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
@@ -93,6 +95,7 @@ class ExpireLapsedTests(TestCase):
         self.assertEqual(Notification.objects.count(), 0)
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL row locks")
 class ExpireVersusRenewalRaceTests(TransactionTestCase):
     """If a renewal (a fresh row, old one superseded) commits while the sweeper waits for the user
     lock, the sweeper must not touch the new row."""

@@ -1,11 +1,13 @@
 """Renewing a campus verification: who may, the single-use link, and what it changes."""
 import re
+import unittest
 from datetime import timedelta
 
 from django.conf import settings
 from django.core import mail
 from django.core.cache import cache
 from django.db import transaction
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -205,6 +207,7 @@ class ViewTests(TestCase):
         self.assertContains(self.client.get(reverse("me")), reverse("accounts:renew"))
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "needs PostgreSQL row locks")
 class DoubleConfirmRaceTests(TransactionTestCase):
     def test_two_confirmations_of_one_link_renew_exactly_once(self):
         u = campus_user("racer")
