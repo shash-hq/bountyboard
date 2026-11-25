@@ -10,8 +10,9 @@ from django.utils import timezone
 
 from apps.accounts.testing import create_verified_user
 
-from . import inbox, services
+from . import services
 from .models import Bounty, BountyStatus, Claim, EmailStatus, Notification, NotificationKind
+from apps.bounties.tests_outbox import accepted_claim, queue
 
 PW = "pw-12345-abc"
 SECRET = "s" * 40
@@ -66,11 +67,7 @@ class TickTests(TestCase):
 
     def test_it_expires_overdue_bounties_and_delivers_queued_email(self):
         b = self.overdue_bounty()
-        from django.db import transaction
-
-        with transaction.atomic():
-            inbox.notify(self.claimant, NotificationKind.CLAIM_ACCEPTED, "x", "tick-mail", bounty=b,
-                         claim=b.claims.first(), email=True)
+        queue(accepted_claim("tick"), "tick-mail")  # an email waiting for another, accepted claim
         mail.outbox.clear()
         r = self.post()
         self.assertEqual(r.status_code, 200)

@@ -10,14 +10,19 @@ the same row twice at once and never block each other. Delivery is at-least-once
 after SMTP accepts a message but before our commit, the row is still PENDING and is sent again.
 
 Budget: SENT rows in the last 24 h are counted against ``OUTBOX_EMAIL_DAILY_CAP``, which is kept well
-under the provider's 300/day so account-verification and password-reset mail always has room.
+under the provider's 300/day so account-verification and password-reset mail always has room. Counting
+and sending are serialized by a transaction advisory lock, otherwise two deliveries could both see the
+last free slot. It is a try-lock: a second delivery gives up ("busy") instead of waiting on someone
+else's SMTP call, and its row goes out on a later tick.
+
+A row whose event no longer holds (``emails.Obsolete``) is dropped back to in-app only.
 """
 import logging
 from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import EmailMessage
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from . import emails
@@ -27,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 BACKOFF_BASE = timedelta(minutes=1)
 BACKOFF_MAX = timedelta(hours=6)
+BUDGET_LOCK_SQL = "SELECT pg_try_advisory_xact_lock(hashtextextended('bounties.outbox.budget', 0))"
 
 
 def backoff(attempts: int) -> timedelta:
@@ -42,12 +48,24 @@ def _due(now):
     return Notification.objects.filter(email_status=EmailStatus.PENDING, next_attempt_at__lte=now)
 
 
+def _take_budget_lock() -> bool:
+    """Hold the budget until this transaction ends. PostgreSQL only, like the other advisory locks."""
+    if connection.vendor != "postgresql":
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(BUDGET_LOCK_SQL)
+        return cursor.fetchone()[0]
+
+
 def deliver_one(pk=None, now=None) -> str:
     """Deliver one due row (the given one, or the next due one). Returns what happened:
-    ``"sent"``, ``"retry"``, ``"dead"``, ``"budget"`` (cap reached, row left PENDING) or ``"none"``."""
+    ``"sent"``, ``"retry"``, ``"dead"``, ``"skipped"`` (obsolete, never sent), ``"budget"`` (cap reached) or
+    ``"busy"`` (another delivery holds the budget), both leaving the row PENDING, or ``"none"``."""
     now = now or timezone.now()
     with transaction.atomic():
-        qs = _due(now).select_related("recipient", "bounty").order_by("next_attempt_at", "pk")
+        if not _take_budget_lock():
+            return "busy"
+        qs = _due(now).select_related("recipient", "bounty", "claim__claimant", "claim__bounty__poster").order_by("next_attempt_at", "pk")
         if pk is not None:
             qs = qs.filter(pk=pk)
         n = qs.select_for_update(skip_locked=True, of=("self",)).first()
@@ -60,6 +78,10 @@ def deliver_one(pk=None, now=None) -> str:
             if not to:
                 raise ValueError("recipient has no email address")
             EmailMessage(subject, body, settings.DEFAULT_FROM_EMAIL, [to]).send(fail_silently=False)
+        except emails.Obsolete as exc:
+            n.email_status, n.next_attempt_at, n.last_error = EmailStatus.NONE, None, f"not sent: {exc}"[:200]
+            n.save(update_fields=["email_status", "next_attempt_at", "last_error"])
+            return "skipped"
         except Exception as exc:  # noqa: BLE001 - any failure is retried, then given up on
             n.attempts += 1
             n.last_error = f"{type(exc).__name__}: {exc}"[:200]
@@ -97,8 +119,8 @@ def drain(now=None, limit=None, max_seconds=None) -> dict:
         if max_seconds is not None and (timezone.now() - started).total_seconds() > max_seconds:
             break
         outcome = deliver_one(now=now)
-        if outcome in ("none", "budget"):
+        if outcome in ("none", "budget", "busy"):
             counts["stopped"] = outcome
             break
-        counts[outcome] += 1
+        counts[outcome] = counts.get(outcome, 0) + 1
     return counts

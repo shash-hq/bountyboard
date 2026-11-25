@@ -308,6 +308,8 @@ class Notification(models.Model):
         indexes = [
             models.Index(fields=["recipient", "read_at", "-created_at"]),
             models.Index(fields=["next_attempt_at"], condition=models.Q(email_status="PENDING"), name="notification_pending_due"),
+            # The daily budget counts recent SENT rows on every delivery.
+            models.Index(fields=["delivered_at"], condition=models.Q(email_status="SENT"), name="notification_sent_at"),
         ]
         constraints = [
             # A PENDING row always says when to try next, and only PENDING rows do.
