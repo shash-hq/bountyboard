@@ -115,3 +115,106 @@ class ExpireVersusRenewalRaceTests(TransactionTestCase):
         self.assertEqual(outcome.get("ok"), 0, outcome)
         old.refresh_from_db()
         self.assertIsNone(old.revoked_at)
+
+
+class RenewalReminderTests(TestCase):
+    """Reminders: once per row, inside the window, oldest first, capped per day, through the outbox."""
+
+    def expiring(self, name, days_left, domain="lpu.co.in"):
+        from .models import StudentIdentity
+
+        u = create_verified_user(name, f"{name}@{domain}", PW)
+        StudentIdentity.objects.create(user=u, reg_no_hmac=(name * 64)[:64], reg_no_last4="1234", source="SELF_DECLARED")
+        campus_verify(u, verified_at=timezone.now() - TTL + timedelta(days=days_left), verified_email=u.email)
+        return u
+
+    def reminders(self):
+        from apps.bounties.models import NotificationKind
+
+        return Notification.objects.filter(kind=NotificationKind.RENEWAL_REMINDER)
+
+    def test_only_rows_lapsing_within_the_window_are_reminded(self):
+        soon = self.expiring("soon", settings.RENEWAL_REMINDER_DAYS - 1)
+        self.expiring("later", settings.RENEWAL_REMINDER_DAYS + 5)
+        self.expiring("edge", settings.RENEWAL_REMINDER_DAYS)
+        self.assertEqual(expiry.remind_expiring(), 2)  # "edge" is exactly N days out: included
+        self.assertEqual({n.recipient.username for n in self.reminders()}, {"soon", "edge"})
+        self.assertEqual(self.reminders().filter(recipient=soon).get().email_status, "PENDING")
+
+    def test_each_row_is_reminded_once(self):
+        self.expiring("soon", 5)
+        self.assertEqual(expiry.remind_expiring(), 1)
+        self.assertEqual(expiry.remind_expiring(), 0)
+        self.assertEqual(self.reminders().count(), 1)
+        self.assertIsNotNone(CampusVerification.objects.get().renewal_reminder_sent_at)
+
+    def test_lapsed_revoked_and_unreachable_users_are_skipped(self):
+        lapsed = lapsed_user("lapsed")
+        gone = self.expiring("gone", 5)
+        CampusVerification.objects.filter(user=gone).update(revoked_at=timezone.now(), revoke_reason="LEFT_CAMPUS")
+        inactive = self.expiring("inactive", 5)
+        User_ = type(inactive)
+        User_.objects.filter(pk=inactive.pk).update(is_active=False)
+        self.assertEqual(expiry.remind_expiring(), 0)
+
+    def test_oldest_first_and_capped_per_day_across_runs(self):
+        from django.test import override_settings
+
+        a, b, c = self.expiring("a", 3), self.expiring("b", 10), self.expiring("c", 20)
+        with override_settings(RENEWAL_REMINDERS_PER_DAY=2):
+            self.assertEqual(expiry.remind_expiring(), 2)
+            self.assertEqual({n.recipient for n in self.reminders()}, {a, b})  # the two soonest to lapse
+            self.assertEqual(expiry.remind_expiring(), 0)  # budget used up for 24 h
+            self.assertEqual(expiry.remind_expiring(now=timezone.now() + timedelta(hours=25)), 1)
+        self.assertEqual(self.reminders().filter(recipient=c).count(), 1)
+
+    def test_the_email_goes_through_the_outbox_with_a_renew_link_for_campus_addresses(self):
+        from django.core import mail
+
+        from apps.bounties import outbox
+
+        u = self.expiring("campus", 5)
+        expiry.remind_expiring()
+        mail.outbox.clear()
+        self.assertEqual(outbox.deliver_one(), "sent")
+        [m] = mail.outbox
+        self.assertEqual(m.to, [u.email])
+        self.assertIn("/accounts/renew/", m.body)
+        self.assertNotIn("/accounts/renew/1/", m.body)  # a page to sign in to, never a token link
+
+    def test_a_gmail_user_is_told_to_visit_a_desk_instead(self):
+        from django.core import mail
+
+        from apps.bounties import outbox
+
+        u = create_verified_user("desk", "desk@gmail.com", PW)
+        # A campus-email-shaped row on a non-campus address: what a desk-verified user looks like to the
+        # reminder (it only looks at the address domain to decide what advice to give).
+        campus_verify(u, verified_at=timezone.now() - TTL + timedelta(days=5))
+        expiry.remind_expiring()
+        mail.outbox.clear()
+        outbox.deliver_one()
+        self.assertIn("verification desk", mail.outbox[0].body)
+        self.assertNotIn("/accounts/renew/", mail.outbox[0].body)
+
+    def test_renewing_before_the_sweep_means_no_reminder_for_the_old_row(self):
+        from . import renewal
+
+        u = self.expiring("quick", 5)
+        old = CampusVerification.objects.get(user=u)
+        from django.core import mail
+
+        with self.captureOnCommitCallbacks(execute=True):
+            renewal.request_renewal(u.pk)
+        import re
+
+        token = re.search(r"/accounts/renew/\d+/([\w-]+)/", mail.outbox[-1].body).group(1)
+        renewal.confirm_renewal(u.pk, token)
+        old.refresh_from_db()
+        self.assertEqual(old.revoke_reason, "SUPERSEDED")
+        self.assertEqual(expiry.remind_expiring(), 0)  # the new row is a year from lapsing
+
+    def test_the_sweep_does_both_jobs_and_the_tick_reports_them(self):
+        lapsed_user("old")
+        self.expiring("soon", 5)
+        self.assertEqual(expiry.sweep_verifications(), {"expired": 1, "reminded": 1})

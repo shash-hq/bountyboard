@@ -54,5 +54,56 @@ def expire_lapsed(now=None, limit=100) -> int:
     return closed
 
 
+def remind_expiring(now=None, limit=None) -> int:
+    """Queue one renewal reminder per verification that lapses within RENEWAL_REMINDER_DAYS.
+
+    Oldest first, capped at RENEWAL_REMINDERS_PER_DAY per rolling 24 h (counting the Notification rows
+    already created), and at most once per row (``renewal_reminder_sent_at`` is set in the same
+    transaction as the outbox row, under the user's row lock). The email itself is delivered by the
+    outbox, which has its own daily budget on top.
+    """
+    from apps.bounties import inbox
+    from apps.bounties.models import Notification, NotificationKind
+
+    now = now or timezone.now()
+    cutoff = _cutoff(now)
+    window_end = cutoff + timedelta(days=settings.RENEWAL_REMINDER_DAYS)
+    already = Notification.objects.filter(
+        kind=NotificationKind.RENEWAL_REMINDER, created_at__gt=now - timedelta(hours=24)
+    ).count()
+    budget = min(limit or settings.RENEWAL_REMINDERS_PER_DAY, settings.RENEWAL_REMINDERS_PER_DAY - already)
+    if budget <= 0:
+        return 0
+    due = list(
+        CampusVerification.objects.filter(
+            revoked_at__isnull=True, renewal_reminder_sent_at__isnull=True,
+            verified_at__gt=cutoff, verified_at__lte=window_end,
+        ).order_by("verified_at", "pk").values_list("pk", "user_id")[:budget]
+    )
+    sent = 0
+    for pk, user_id in due:
+        try:
+            with transaction.atomic():
+                user = User.objects.select_for_update().get(pk=user_id)
+                row = CampusVerification.objects.filter(
+                    pk=pk, revoked_at__isnull=True, renewal_reminder_sent_at__isnull=True, verified_at__gt=cutoff,
+                ).first()
+                if row is None or not user.is_active or user.email_verified_at is None:
+                    continue
+                row.renewal_reminder_sent_at = now
+                row.save(update_fields=["renewal_reminder_sent_at"])
+                lapses = row.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
+                inbox.notify(
+                    user, NotificationKind.RENEWAL_REMINDER,
+                    f"Your campus verification expires on {lapses:%b %d, %Y}. Renew it from your dashboard.",
+                    f"renewal-reminder:{row.pk}", email=True, now=now,
+                )
+                sent += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not queue a renewal reminder for verification %s", pk)
+    return sent
+
+
 def sweep_verifications(now=None) -> dict:
-    return {"expired": expire_lapsed(now)}
+    """The tick's job for verifications: close what lapsed, then remind those about to."""
+    return {"expired": expire_lapsed(now), "reminded": remind_expiring(now)}

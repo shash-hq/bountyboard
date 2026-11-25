@@ -60,6 +60,10 @@ OPEN_BOUNTY_CAP_EMAIL_VERIFIED = env.int("OPEN_BOUNTY_CAP_EMAIL_VERIFIED", defau
 OPEN_BOUNTY_CAP_CAMPUS_VERIFIED = env.int("OPEN_BOUNTY_CAP_CAMPUS_VERIFIED", default=5)
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
+# Renewal reminders: sent once per verification this many days before it lapses, at most this many per
+# rolling 24 h (email is limited to 300/day and verification, reset and acceptance mail come first).
+RENEWAL_REMINDER_DAYS = env.int("RENEWAL_REMINDER_DAYS", default=30)
+RENEWAL_REMINDERS_PER_DAY = env.int("RENEWAL_REMINDERS_PER_DAY", default=50)
 
 # Outbox email delivery. The provider's budget is 300/day and account verification and password reset
 # come first, so notification mail is capped well below it.

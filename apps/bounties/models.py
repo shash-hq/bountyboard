@@ -237,6 +237,7 @@ class NotificationKind(models.TextChoices):
     BOUNTY_DONE = "BOUNTY_DONE", "The bounty you worked on was marked done"
     BOUNTY_CANCELLED = "BOUNTY_CANCELLED", "A bounty you claimed was cancelled"
     BOUNTY_EXPIRED = "BOUNTY_EXPIRED", "A bounty expired"
+    RENEWAL_REMINDER = "RENEWAL_REMINDER", "Your campus verification is about to lapse"
     COUNTERPARTY_REVOKED = "COUNTERPARTY_REVOKED", "Counterparty lost campus verification"
     COUNTERPARTY_CANCELLED = "COUNTERPARTY_CANCELLED", "Counterparty cancelled after a verification revocation"
 

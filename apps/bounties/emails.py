@@ -28,8 +28,35 @@ def claim_accepted(n):
     return claimant.email, subject, body
 
 
+def renewal_reminder(n):
+    """Rendered at send time from the user's current state, so the advice matches their situation."""
+    from django.urls import reverse
+
+    from apps.accounts import campus
+
+    user = n.recipient
+    subject = "[Bounty Board] Your campus verification expires soon"
+    if campus.campus_email_allowed(user.email):
+        action = (
+            "Renew it in a minute: open the link, sign in, and we'll send a confirmation link to your "
+            f"campus address.\n{absolute_url(reverse('accounts:renew'))}\n"
+        )
+    else:
+        action = (
+            "To renew, visit a verification desk with your LPU ID card (your dashboard shows the code "
+            "to bring), or ask a moderator how to verify with a campus email address.\n"
+        )
+    body = (
+        f"Hi {user.username},\n\n"
+        "Your campus verification is about to lapse. After that you won't be able to accept a claim or "
+        "be accepted, and your open-bounty limit drops. Bounties already accepted are not affected.\n\n"
+        f"{action}\n— Bounty Board Campus Marketplace"
+    )
+    return user.email, subject, body
+
+
 # kind -> callable(notification) -> (to_address, subject, body)
-RENDERERS = {"CLAIM_ACCEPTED": claim_accepted}
+RENDERERS = {"CLAIM_ACCEPTED": claim_accepted, "RENEWAL_REMINDER": renewal_reminder}
 
 
 def render(n):
