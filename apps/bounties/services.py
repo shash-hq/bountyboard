@@ -138,6 +138,10 @@ def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
 
         if user != bounty.poster:
             raise NotPermitted("You do not have permission to edit this bounty.")
+        # create_bounty counts live bounties under this lock. Take it before reading the clock, so an
+        # edit can't extend a deadline that a concurrent create has already counted as expired (I4).
+        User = get_user_model()
+        User.objects.select_for_update(no_key=True).get(pk=bounty.poster_id)
         if bounty.status != BountyStatus.OPEN or bounty.is_expired:
             raise InvalidTransition("Only active OPEN bounties can be edited.")
 
