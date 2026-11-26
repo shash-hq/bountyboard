@@ -2,8 +2,9 @@
 
 A GitHub Actions cron calls it every ~10 minutes (the free web tier has no workers or cron, and
 sleeps when idle, so the call also wakes it). Each call, in order: closes overdue bounties, closes lapsed campus
-verifications and queues renewal reminders, then drains the email outbox. All are idempotent and safe to run concurrently, so an overlapping or
-repeated call does no harm. Running queries also keeps the free database from pausing.
+verifications and queues renewal reminders, drains the email outbox, then deletes a batch of abandoned
+unverified accounts. All are idempotent and safe to run concurrently, so an overlapping or repeated call
+does no harm. Running queries also keeps the free database from pausing.
 
 Authentication is a shared secret in ``X-Tick-Secret``, compared in constant time. With no secret
 configured the endpoint does not exist (404): it fails closed.
@@ -20,12 +21,14 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from apps.accounts import expiry
+from apps.accounts.services import purge_stale_unverified
 
 from . import outbox, services
 
 logger = logging.getLogger(__name__)
 
 TICK_BUDGET_SECONDS = 20  # leave headroom under the caller's timeout on a 0.1-CPU instance
+PURGE_PER_TICK = 25
 
 
 @login_not_required
@@ -57,4 +60,9 @@ def tick_view(request):
     except Exception:  # noqa: BLE001
         logger.exception("tick: outbox drain failed")
         result["outbox_error"] = True
+    try:  # last: housekeeping must never delay email
+        result["purged"] = purge_stale_unverified(limit=PURGE_PER_TICK)
+    except Exception:  # noqa: BLE001
+        logger.exception("tick: unverified-account purge failed")
+        result["purged_error"] = True
     return JsonResponse(result, status=500 if any(k.endswith("_error") for k in result) else 200)

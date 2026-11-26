@@ -1,7 +1,8 @@
 name: Tick
 
 # Free-tier Render has no cron and no workers, and it sleeps when idle. This calls /internal/tick
-# every ~10 minutes: it wakes the service, closes overdue bounties, delivers queued email and keeps
+# every ~10 minutes: it wakes the service, closes overdue bounties, delivers queued email, purges
+# abandoned unverified accounts and keeps
 # the free database from pausing. Needs two repository secrets, and fails until both are set:
 # TICK_URL (the full
 # https://<host>/internal/tick/ URL) and TICK_SECRET (same value as the service's TICK_SECRET).

@@ -164,13 +164,21 @@ def stale_unverified_users(now=None):
     ).filter(Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now))
 
 
-def purge_stale_unverified(now=None) -> int:
+def purge_stale_unverified(now=None, limit=None) -> int:
     """Delete stale unverified accounts so nobody can hold an address or username forever.
-    Accounts that own any rows are never deleted. Returns the number deleted."""
+    Accounts that own any rows are never deleted. Stops after ``limit`` deletions, if given.
+    Returns the number deleted."""
+    now = now or timezone.now()
     deleted = 0
-    for user in stale_unverified_users(now):
+    for user in stale_unverified_users(now).order_by("date_joined", "pk"):
+        if limit is not None and deleted >= limit:
+            break
         with transaction.atomic():
-            locked = User.objects.select_for_update().filter(pk=user.pk, email_verified_at__isnull=True).first()
+            # Re-check under the lock: a resend or a confirm may have landed since the listing.
+            locked = User.objects.select_for_update().filter(
+                Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now),
+                pk=user.pk, email_verified_at__isnull=True,
+            ).first()
             if locked is not None and not owns_rows(locked):
                 locked.delete()
                 deleted += 1
