@@ -67,9 +67,8 @@ class BlockedTests(BlockTestCase):
 
     def test_the_desk_does_not_reveal_the_block_without_a_valid_code(self):
         self.revoke()
-        with self.assertRaises(Exception) as caught:
+        with self.assertRaises(desk.InvalidPresenceCode):
             desk.verify_in_person(self.verifier.pk, "stu", "000000", REG, "Asha Verma")
-        self.assertNotIsInstance(caught.exception, VerificationBlocked)
 
     def test_the_dashboard_offers_no_code_and_says_who_can_help(self):
         self.revoke()
