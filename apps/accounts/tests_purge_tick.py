@@ -73,3 +73,27 @@ class PurgeFromTickTests(TestCase):
     def test_the_time_budget_stops_the_scan(self):
         abandoned("gone")
         self.assertEqual(services.purge_stale_unverified(max_seconds=0), 0)
+
+    def test_staff_flags_set_after_the_listing_save_the_account(self):
+        for i, flag in enumerate(("is_staff", "is_superuser")):
+            user = abandoned(f"flagged{i}")
+            listed = User.objects.filter(pk=user.pk)
+            User.objects.filter(pk=user.pk).update(**{flag: True})
+            with mock.patch.object(services, "stale_unverified_users", return_value=listed):
+                self.assertEqual(services.purge_stale_unverified(), 0, flag)
+            self.assertTrue(User.objects.filter(pk=user.pk).exists(), flag)
+
+    def test_protected_accounts_use_up_the_budget_although_they_do_not_count(self):
+        abandoned("protected", date_joined=timezone.now() - timedelta(days=60))
+        later = abandoned("later")
+        clock = [0.0]
+
+        def slow_ownership_check(user):
+            clock[0] += 10
+            return True
+
+        with mock.patch.object(services, "owns_rows", slow_ownership_check), \
+                mock.patch.object(services.time, "monotonic", lambda: clock[0]):
+            self.assertEqual(services.purge_stale_unverified(limit=25, max_seconds=5), 0)
+        self.assertEqual(clock[0], 10)  # only the first candidate was examined
+        self.assertTrue(User.objects.filter(pk=later.pk).exists())
