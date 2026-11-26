@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Link Not Valid | Bounty Board{% endblock %}
+
+{% block content %}
+<div class="form-center-container">
+  <div class="brutal-card">
+    <span class="stamp-badge stamp-claimed">LINK NOT VALID</span>
+    <h1 class="page-title">THIS LINK DOESN'T WORK</h1>
+    <p>It may have expired, been used already, or belong to another account. Make sure you're signed in as the account it was sent for, then request a new one.</p>
+    <a href="{% url 'accounts:renew' %}" class="btn btn-primary">REQUEST A NEW LINK</a>
+  </div>
+</div>
+{% endblock %}

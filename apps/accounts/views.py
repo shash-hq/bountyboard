@@ -22,8 +22,8 @@ from apps.bounties.exceptions import DomainError
 from apps.bounties.policies import can_moderate, can_verify_students, is_campus_verified, open_bounty_cap
 from apps.bounties import inbox
 from apps.bounties.services import count_live_open_bounties
-from . import campus, desk
-from .forms import ConfirmEmailForm, ContactHandleForm, DeskVerifyForm, LoginForm, ResendVerificationForm, SignupForm
+from . import campus, desk, renewal
+from .forms import ConfirmEmailForm, ContactHandleForm, DeskVerifyForm, LoginForm, RenewForm, ResendVerificationForm, SignupForm
 from .ratelimits import confirm_account, desk_verifier, login_identifier, rate, reset_email
 from .campus import needs_reg_no
 from .identity import InvalidCardName, InvalidRegNo
@@ -197,7 +197,7 @@ def _campus_context(user):
     """
     now = timezone.now()
     active = campus.active_verifications(now).filter(user=user).first()
-    ctx = {"campus_verification": active, "presence_code": None}
+    ctx = {"campus_verification": active, "presence_code": None, "can_renew": renewal.renewal_allowed(user, now)}
     if active is not None:
         ctx["campus_expires_at"] = active.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
     elif user.email_verified_at is not None:
@@ -208,7 +208,9 @@ def _campus_context(user):
             ctx["last_ended_expired"] = last.revoked_at is None or last.revoke_reason == RevokeReason.EXPIRED
             ctx["last_expired_on"] = last.verified_at + timedelta(days=settings.VERIFICATION_TTL_DAYS)
         ctx["last_verification"] = last
-        ctx["presence_code"] = desk.presence_code(user.pk, now)
+        ctx["verification_blocked"] = campus.is_blocked(user)
+        if not ctx["verification_blocked"]:
+            ctx["presence_code"] = desk.presence_code(user.pk, now)
     return ctx
 
 
@@ -246,6 +248,53 @@ def desk_view(request):
         form.data = form.data.copy()
         form.data["code"] = ""
     return render(request, "accounts/desk.html", {"form": form})
+
+
+@login_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def renew_view(request):
+    """Ask for a renewal link. Plain POST + PRG; rate-limited per account because it sends email."""
+    can = renewal.renewal_allowed(request.user)
+    if request.method == "POST":
+        if is_ratelimited(request, group="renew-request", key="user", rate=settings.RATE_LIMITS["renew_request_per_user"], method="POST", increment=True):
+            raise Ratelimited()
+        try:
+            renewal.request_renewal(request.user.pk)
+            messages.success(request, "We sent a renewal link to your campus email address. It works once.")
+        except DomainError as e:
+            messages.error(request, e.messages[0])
+        return redirect("accounts:renew")
+    return render(request, "accounts/renew.html", {
+        "can_renew": can, "email": request.user.email, "ttl_days": settings.VERIFICATION_TTL_DAYS,
+    })
+
+
+@login_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def renew_confirm_view(request, uid, token):
+    """The link from the renewal email. GET only shows a button and changes nothing (mail scanners
+    prefetch links); POST renews. Must be signed in as the account the link was issued for."""
+    if request.user.pk != uid or not renewal.peek_renewal(request.user, token):
+        return render(request, "accounts/renew_invalid.html", status=400)
+    ask_reg_no = needs_reg_no(request.user)
+    # Bound on POST even when the body is empty (a bare button): `request.POST or None` would leave it unbound.
+    form = RenewForm(request.POST if request.method == "POST" else None, ask_reg_no=ask_reg_no)
+    if request.method == "POST":
+        if is_ratelimited(request, group="renew-confirm", key="user", rate=settings.RATE_LIMITS["renew_confirm_per_user"], method="POST", increment=True):
+            raise Ratelimited()
+        if form.is_valid():
+            try:
+                renewal.confirm_renewal(uid, token, form.cleaned_data.get("reg_no", ""))
+            except InvalidRegNo:
+                form.add_error("reg_no", InvalidRegNo.messages[0])
+            except InvalidToken:
+                return render(request, "accounts/renew_invalid.html", status=400)
+            else:
+                messages.success(request, "Your campus verification is renewed.")
+                return redirect("me")
+    return render(request, "accounts/renew_confirm.html", {"form": form})
 
 
 @login_required

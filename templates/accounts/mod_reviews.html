@@ -6,7 +6,7 @@
 <div class="form-center-container">
   <div class="brutal-card">
     <h1 class="page-title">IDENTITY REVIEWS</h1>
-    <p>Someone verified with a registration number that is already bound to another account. They were verified anyway, without a binding; decide who is right. If it is only a typing mistake, leave the review open: correcting a number isn't supported yet.</p>
+    <p>Someone verified with a registration number that is already bound to another account. They were verified anyway, without a binding; decide who is right. If the loser's verification is active or expired, it is revoked and that account is blocked from verifying again until a moderator allows it. If it is only a typing mistake, leave the review open: correcting a number isn't supported yet.</p>
     <p><a href="{% url 'accounts:mod_index' %}">Back to lookup</a></p>
   </div>
   {% for r in reviews %}

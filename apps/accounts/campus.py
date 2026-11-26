@@ -45,8 +45,25 @@ def is_campus_verified(user, now=None) -> bool:
     return active_verifications(now).filter(user=user).exists()
 
 
+# Revocations that say something about the person or the check, not just that they moved on.
+BLOCKING_REASONS = (RevokeReason.VERIFICATION_INVALID, RevokeReason.POLICY_VIOLATION)
+
+
+def is_blocked(user) -> bool:
+    """Revoked for cause and not yet cleared by a moderator: no path may verify this account again.
+
+    Any such row counts, not only the latest. Callers that write must hold the user row lock, which
+    revocation also takes, so a block cannot appear between this check and the insert.
+    """
+    return CampusVerification.objects.filter(
+        user=user, revoke_reason__in=BLOCKING_REASONS, block_cleared_at__isnull=True
+    ).exists()
+
+
 def needs_reg_no(user) -> bool:
     """Whether confirming this user's email must also collect a registration number."""
+    if is_blocked(user):
+        return False  # nothing will be verified, so don't collect a number
     return campus_email_allowed(user.email) and not StudentIdentity.objects.filter(user=user).exists()
 
 
@@ -97,11 +114,11 @@ def supersede_active(user, now):
 def verify_campus_email(user, reg_no, now=None):
     """Create a CAMPUS_EMAIL verification for ``user`` (row must be locked by the caller).
 
-    No-op unless ``user.email`` is an exact campus-domain match. A missing/invalid registration
+    No-op unless ``user.email`` is an exact campus-domain match and the account is not blocked. A missing/invalid registration
     number raises ``InvalidRegNo`` *before* anything is written, unless the user already holds a
     binding (renewal), in which case it isn't asked for again.
     """
-    if not campus_email_allowed(user.email):
+    if not campus_email_allowed(user.email) or is_blocked(user):
         return None
     now = now or timezone.now()
     has_binding = StudentIdentity.objects.filter(user=user).exists()

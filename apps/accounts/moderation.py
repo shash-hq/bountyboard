@@ -14,6 +14,7 @@ from apps.bounties import inbox
 from apps.bounties.models import Bounty, BountyStatus, NotificationKind
 from apps.bounties.policies import CANCELLABLE_REVOKE_REASONS, can_moderate
 
+from . import campus
 from .errors import InvalidState, NotPermitted
 from .identity import decrypt_card_name, hash_reg_no, redact_reg_nos
 from .models import (
@@ -46,8 +47,10 @@ def _clean_note(note: str) -> str:
 
 
 def revoke_verification(moderator_id, user_id, reason, note="", now=None):
-    """Revoke the user's active campus verification. The identity binding is kept, so a revoked
-    user cannot simply re-verify the same card on a new account (see ``release_identity``).
+    """Revoke the user's active campus verification, or their lapsed one (for cause only). The identity binding is kept, so a revoked
+    user cannot simply re-verify the same card on a new account (see ``release_identity``). For an
+    invalid verification or a policy violation the account is also blocked from verifying again
+    until ``clear_verification_block``.
 
     Existing CLAIMED bounties and contact details already shown are left alone. For an invalid
     verification or a policy violation the counterparty of each such bounty gets an in-app
@@ -68,12 +71,25 @@ def revoke_verification(moderator_id, user_id, reason, note="", now=None):
         return _revoke_locked(moderator, subject, reason, note, now)
 
 
+def _revocable(subject):
+    """The row a revocation would land on: the unrevoked one (active, or lapsed but unswept), else the
+    latest one if it simply expired. Without the second case, letting a verification lapse would put an
+    account out of a moderator's reach."""
+    unrevoked = CampusVerification.objects.filter(user=subject, revoked_at__isnull=True).first()
+    if unrevoked is not None:
+        return unrevoked
+    latest = CampusVerification.objects.filter(user=subject).order_by("-verified_at", "-pk").first()
+    return latest if latest is not None and latest.revoke_reason == RevokeReason.EXPIRED else None
+
+
 def _revoke_locked(moderator, subject, reason, note, now):
-    """Revoke ``subject``'s active verification. The caller holds the moderator's and subject's user
-    locks, inside one transaction. Writes the AuditEvent and the counterparty notifications."""
-    verification = CampusVerification.objects.filter(user=subject, revoked_at__isnull=True).first()
-    if verification is None:
-        raise InvalidState("This user has no active verification.")
+    """Revoke ``subject``'s verification (see ``_revocable``). The caller holds the moderator's and
+    subject's user locks, inside one transaction. Writes the AuditEvent and the counterparty
+    notifications. On an expired row the cause replaces EXPIRED; the lapse stays in the audit trail."""
+    verification = _revocable(subject)
+    # The sweeper has recorded an expired row; only a cause that blocks is worth rewriting it for.
+    if verification is None or (verification.revoked_at and reason not in campus.BLOCKING_REASONS):
+        raise InvalidState("This user has no verification that can be revoked for that reason.")
     verification.revoked_at, verification.revoked_by = now, moderator
     verification.revoke_reason, verification.revoke_note = reason, note
     verification.save(update_fields=["revoked_at", "revoked_by", "revoke_reason", "revoke_note"])
@@ -158,6 +174,30 @@ def reveal_card_name(actor_id, user_id, reason="", now=None) -> str:
         return decrypt_card_name(verification.card_name_enc)
 
 
+def clear_verification_block(moderator_id, user_id, note, now=None):
+    """Let a user who was revoked for cause verify again. It verifies nobody by itself.
+
+    A note is required, and a moderator cannot lift their own block. Same lock as revocation, so the
+    two cannot interleave.
+    """
+    note = _clean_note(note)
+    if not note:
+        raise InvalidState("Say why the block is being lifted.")
+    now = now or timezone.now()
+    with transaction.atomic():
+        moderator, subject = _lock(moderator_id, user_id)
+        if moderator.pk == subject.pk:
+            raise NotPermitted("You cannot lift your own block.")
+        cleared = CampusVerification.objects.filter(
+            user=subject, revoke_reason__in=campus.BLOCKING_REASONS, block_cleared_at__isnull=True
+        ).update(block_cleared_at=now, block_cleared_by=moderator)
+        if not cleared:
+            raise InvalidState("This account is not blocked.")
+        AuditEvent.objects.create(
+            actor=moderator, subject=subject, action="BLOCK_CLEARED", note=note, created_at=now
+        )
+
+
 def _lock_any(actor_id, subject_id):
     rows = {u.pk: u for u in User.objects.select_for_update(no_key=True).filter(pk__in={actor_id, subject_id}).order_by("pk")}
     actor, subject = rows.get(actor_id), rows.get(subject_id)
@@ -232,7 +272,9 @@ def resolve_identity_review(moderator_id, review_id, resolution, note, now=None)
     """Close an open registration-number collision.
 
     ``KEEP_EXISTING``  the existing holder is right; the newcomer's verification is revoked with
-                       VERIFICATION_INVALID (so they must verify again properly).
+                       VERIFICATION_INVALID, which blocks them until a moderator lifts it. This needs
+                       a verification that is active or expired; one already ended for another reason
+                       (e.g. LEFT_CAMPUS) is left as it is and does not block.
     ``REASSIGN``       the newcomer is right: the holder's binding is released, rebound to the
                        newcomer, and the old holder's verification is revoked (INVALID).
     ``BOTH_LEGIT_TYPO`` is refused: closing would leave the newcomer verified but unbound with no way
@@ -269,7 +311,7 @@ def resolve_identity_review(moderator_id, review_id, resolution, note, now=None)
         holder = users[holder_id] if holder_id else None
 
         if resolution == ReviewResolution.KEEP_EXISTING:
-            if CampusVerification.objects.filter(user=claimant, revoked_at__isnull=True).exists():
+            if _revocable(claimant) is not None:
                 _revoke_locked(actor, claimant, RevokeReason.VERIFICATION_INVALID, note, now)
         elif resolution == ReviewResolution.REASSIGN:
             if StudentIdentity.objects.filter(user=claimant).exists():
@@ -279,7 +321,7 @@ def resolve_identity_review(moderator_id, review_id, resolution, note, now=None)
                 AuditEvent.objects.create(
                     actor=actor, subject=holder, action="IDENTITY_RELEASED", note=note, created_at=now
                 )
-                if CampusVerification.objects.filter(user=holder, revoked_at__isnull=True).exists():
+                if _revocable(holder) is not None:
                     _revoke_locked(actor, holder, RevokeReason.VERIFICATION_INVALID, note, now)
             identity = StudentIdentity.objects.create(
                 user=claimant, reg_no_hmac=review.claimed_hmac, reg_no_last4=review.claimed_last4,

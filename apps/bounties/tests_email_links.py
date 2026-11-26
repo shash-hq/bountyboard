@@ -47,6 +47,6 @@ class EmailLinkTests(TestCase):
         self.assertIn(f"https://board.example.org{self.bounty.get_absolute_url()}", body)
         self.assertNotIn("bountyboard.campus", body)
 
-    def test_only_acceptance_has_an_email_renderer(self):
+    def test_only_acceptance_and_renewal_reminders_have_an_email_renderer(self):
         """Email is scarce: every other kind is in-app only, so nothing else can be rendered or sent."""
-        self.assertEqual(set(emails.RENDERERS), {"CLAIM_ACCEPTED"})
+        self.assertEqual(set(emails.RENDERERS), {"CLAIM_ACCEPTED", "RENEWAL_REMINDER"})

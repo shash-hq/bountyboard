@@ -79,6 +79,20 @@ class TickTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn(SECRET, r.content.decode())
 
+    def test_it_also_closes_lapsed_campus_verifications(self):
+        from datetime import timedelta as td
+
+        from django.conf import settings as st
+
+        from apps.accounts.models import CampusVerification
+        from apps.accounts.testing import campus_verify
+
+        u = create_verified_user("lapsed", "lapsed@gmail.com", PW)
+        campus_verify(u, verified_at=timezone.now() - td(days=st.VERIFICATION_TTL_DAYS + 1))
+        body = self.post().json()
+        self.assertEqual(body["verifications"]["expired"], 1)
+        self.assertEqual(CampusVerification.objects.get(user=u).revoke_reason, "EXPIRED")
+
     def test_repeating_it_is_harmless(self):
         self.overdue_bounty()
         self.post()

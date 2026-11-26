@@ -60,6 +60,10 @@ OPEN_BOUNTY_CAP_EMAIL_VERIFIED = env.int("OPEN_BOUNTY_CAP_EMAIL_VERIFIED", defau
 OPEN_BOUNTY_CAP_CAMPUS_VERIFIED = env.int("OPEN_BOUNTY_CAP_CAMPUS_VERIFIED", default=5)
 # How long a campus verification stays active before it must be renewed.
 VERIFICATION_TTL_DAYS = env.int("VERIFICATION_TTL_DAYS", default=365)
+# Renewal reminders: sent once per verification this many days before it lapses, at most this many per
+# rolling 24 h (email is limited to 300/day and verification, reset and acceptance mail come first).
+RENEWAL_REMINDER_DAYS = env.int("RENEWAL_REMINDER_DAYS", default=30)
+RENEWAL_REMINDERS_PER_DAY = env.int("RENEWAL_REMINDERS_PER_DAY", default=50)
 
 # Outbox email delivery. The provider's budget is 300/day and account verification and password reset
 # come first, so notification mail is capped well below it.
@@ -220,6 +224,9 @@ RATE_LIMITS = {
     # Every desk submission, successful or not, per verifier. The service caps successful
     # verifications; this caps *guessing* presence codes (a wrong code is not a verification).
     "desk_per_verifier": "60/h",
+    # Renewal sends a link to the campus mailbox (email budget), so limit it per account.
+    "renew_request_per_user": "3/h",
+    "renew_confirm_per_user": "20/h",
 }
 
 # Cache backend (LocMem for dev & rate limiting)

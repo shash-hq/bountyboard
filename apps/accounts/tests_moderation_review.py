@@ -1,12 +1,13 @@
 """IdentityReview resolution and the staff role: outcomes, audit trail, races between moderators."""
 import unittest
 
-from django.db import connection
+from django.db import connection, transaction
 from django.test import TransactionTestCase
+from django.utils import timezone
 
 from apps.bounties.tests_races import in_worker, wait_until_a_lock_request_is_waiting
 
-from . import moderation
+from . import campus, moderation
 from .errors import InvalidState, NotPermitted
 from .models import (
     AuditEvent, CampusVerification, IdentityReview, ReviewResolution, StudentIdentity, User,
@@ -52,6 +53,15 @@ class ResolveReviewTests(ReviewTestCase):
         self.assertIsNone(self.active(self.holder))
         self.assertEqual(CampusVerification.objects.get(user=self.holder).revoke_reason, "VERIFICATION_INVALID")
         self.assertFalse(StudentIdentity.objects.filter(user=self.holder).exists())
+
+    def test_a_loser_whose_verification_already_expired_is_blocked_too(self):
+        for resolution, loser in ((ReviewResolution.KEEP_EXISTING, self.newcomer),
+                                  (ReviewResolution.REASSIGN, self.holder)):
+            with self.subTest(resolution), transaction.atomic():
+                CampusVerification.objects.filter(user=loser).update(revoked_at=timezone.now(), revoke_reason="EXPIRED")
+                self.resolve(resolution)
+                self.assertTrue(campus.is_blocked(loser))
+                transaction.set_rollback(True)
 
     def test_a_typo_review_cannot_be_closed_yet_and_stays_open(self):
         with self.assertRaises(InvalidState):

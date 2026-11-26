@@ -235,6 +235,10 @@ Manual run-through via `runserver` and the console email backend (signup is open
 11. **`lookup_by_reg_no` and `reveal_contact_for_moderation` require a reason** (stored in `AuditEvent.note`), and lookups are audited on a miss too (`reason` = `MATCH`/`NO_MATCH`).
 12. **The Staff badge is shown on the bounty detail page only.** The board doesn't render posters, so there is no N+1 to avoid.
 
+## Deviations from this plan (found while building PR 8)
+
+13. **Revocation for cause blocks re-verification** (decided 26 Nov). `VERIFICATION_INVALID` and `POLICY_VIOLATION` block the desk, campus-email confirmation and renewal until a moderator lifts it (`clear_verification_block`, audited, never on yourself). `LEFT_CAMPUS` and lapses don't. A moderator can also revoke an expired verification, for those two reasons only, so letting it lapse doesn't avoid the block; the row's reason changes from `EXPIRED` and the lapse stays in the audit trail. `KEEP_EXISTING` and `REASSIGN` revoke as invalid, so they block an account whose verification is active or expired. The block is on the account: a new account with the same registration number is still only flagged for review (decision 2).
+
 ## Open questions (my default, if you don't say otherwise)
 
 1. **Renewal for `IN_PERSON` users.** They have no campus inbox, so the "one-click re-verify" can't prove anything. My default: their reminder email asks them to visit a desk, or to add and verify an `@lpu.co.in` address. A one-click "I'm still on campus" self-attestation is **not** offered, because it would make the TTL meaningless.
