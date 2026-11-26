@@ -311,6 +311,8 @@ class Notification(models.Model):
             models.Index(fields=["next_attempt_at"], condition=models.Q(email_status="PENDING"), name="notification_pending_due"),
             # The daily budget counts recent SENT rows on every delivery.
             models.Index(fields=["delivered_at"], condition=models.Q(email_status="SENT"), name="notification_sent_at"),
+            # The reminder cap is re-counted for every reminder queued, under a lock.
+            models.Index(fields=["created_at"], condition=models.Q(kind="RENEWAL_REMINDER"), name="notification_reminder_created"),
         ]
         constraints = [
             # A PENDING row always says when to try next, and only PENDING rows do.
