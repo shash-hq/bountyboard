@@ -9,6 +9,7 @@ hashing and template rendering will be many times slower there: measure those on
 carries over is the query count, and whether it grows with the data.
 """
 import argparse
+import math
 import os
 import statistics
 import sys
@@ -23,6 +24,11 @@ os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.dev"
 import django  # noqa: E402
 
 django.setup()
+
+from django.conf import settings  # noqa: E402
+
+# Dev adds the debug toolbar when it is installed. Production never runs it, so don't time it.
+settings.MIDDLEWARE = [m for m in settings.MIDDLEWARE if not m.startswith("debug_toolbar")]
 
 from django.contrib.auth.hashers import check_password, get_hasher, make_password  # noqa: E402
 from django.db import connection  # noqa: E402
@@ -54,7 +60,7 @@ def measure(fn, repeat):
             times.append((time.perf_counter() - start) * 1000)
         queries = max(queries, len(ctx.captured_queries))
     times.sort()
-    return statistics.median(times), times[max(0, int(len(times) * 0.95) - 1)], queries
+    return statistics.median(times), times[math.ceil(len(times) * 0.95) - 1], queries
 
 
 def row(name, result):
@@ -116,7 +122,7 @@ def run(bounties, repeat):
         ("board, deadline soon", "?sort=deadline_soon"),
         ("board, open tab", "?status=OPEN"),
         ("board, search", "?q=number+42"),
-        ("board, last page", f"?page={max(1, bounties // 12)}"),
+        ("board, last page", f"?page={math.ceil(bounties / 12)}"),
     ):
         row(label, measure(get(client, board + query), repeat))
 
@@ -138,6 +144,10 @@ def run(bounties, repeat):
     overdue = Bounty.objects.filter(status=BountyStatus.OPEN, deadline__lte=timezone.now()).count()
     swept = []
     result = measure(lambda: swept.append(services.sweep_expired()), 1)
+    # sweep_expired logs and skips a bounty that fails, so a broken sweep would otherwise look fast.
+    left = Bounty.objects.filter(status=BountyStatus.OPEN, deadline__lte=timezone.now()).count()
+    assert swept[0] > 0 or overdue == 0, "the sweep closed nothing"
+    assert overdue - left == swept[0], "the sweep's count does not match what changed"
     row(f"sweep_expired, one pass closing {swept[0]} of {overdue} overdue", result)
 
 
