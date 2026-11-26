@@ -200,6 +200,17 @@ class CampusVerification(models.Model):
                 name="accounts_campusverification_revoked_iff_reason",
             ),
             models.CheckConstraint(
+                # isnull=False is needed: "NULL IN (...)" is unknown, which a CHECK lets through.
+                condition=(
+                    models.Q(block_cleared_at__isnull=True)
+                    | models.Q(
+                        revoke_reason__isnull=False,
+                        revoke_reason__in=["VERIFICATION_INVALID", "POLICY_VIOLATION"],
+                    )
+                ),
+                name="accounts_campusverification_block_cleared_only_if_blocking",
+            ),
+            models.CheckConstraint(
                 # An ACTIVE in-person row must carry a card name. A closed (revoked) row may have it
                 # wiped: account deletion removes the name but keeps the row as revocation history.
                 condition=(

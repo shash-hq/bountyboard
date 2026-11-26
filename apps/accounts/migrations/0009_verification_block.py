@@ -28,6 +28,20 @@ class Migration(migrations.Migration):
                 to=settings.AUTH_USER_MODEL,
             ),
         ),
+        migrations.AddConstraint(
+            model_name="campusverification",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    ("block_cleared_at__isnull", True),
+                    models.Q(
+                        ("revoke_reason__in", ["VERIFICATION_INVALID", "POLICY_VIOLATION"]),
+                        ("revoke_reason__isnull", False),
+                    ),
+                    _connector="OR",
+                ),
+                name="accounts_campusverification_block_cleared_only_if_blocking",
+            ),
+        ),
         migrations.AlterField(
             model_name="auditevent",
             name="action",
