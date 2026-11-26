@@ -18,7 +18,7 @@ test:
 
 coverage:
 	$(PYTHON) -m coverage run --branch manage.py test $(SETTINGS) --noinput
-	$(PYTHON) -m coverage report --fail-under=91 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
+	$(PYTHON) -m coverage report --fail-under=92 --omit="*/tests*.py,*/migrations/*,manage.py,config/*"
 
 # Run the concurrency tests 20 times; stops at the first failure.
 stress:

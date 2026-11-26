@@ -26,6 +26,7 @@ from .policies import (
     open_bounty_cap,
 )
 from .services import (
+    SCOPE_FIELDS,
     accept_claim,
     cancel_after_counterparty_revocation,
     cancel_bounty,
@@ -221,8 +222,19 @@ def bounty_edit_view(request, pk):
         messages.error(request, "Only active OPEN bounties can be edited.")
         return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
 
+    has_claims = bounty.claims.exists()
     if request.method == "POST":
         form = BountyForm(request.POST, instance=bounty)
+    else:
+        form = BountyForm(instance=bounty)
+    if has_claims:
+        # A disabled input isn't submitted, so Django takes the stored value. A scope field that *was*
+        # submitted (the claim arrived after the page loaded) stays enabled, so the service refuses the
+        # change out loud instead of the form silently dropping it.
+        for name in SCOPE_FIELDS:
+            form.fields[name].disabled = request.method != "POST" or name not in request.POST
+
+    if request.method == "POST":
         if form.is_valid():
             # Do not form.save(): that writes the whole (possibly stale) row back.
             # The service locks the bounty, re-checks it is still OPEN and writes only these fields.
@@ -233,13 +245,11 @@ def bounty_edit_view(request, pk):
                 return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
             messages.success(request, f"Bounty '{bounty.title}' updated successfully.")
             return redirect(f"/bounties/{bounty.pk}/{bounty.slug}/")
-    else:
-        form = BountyForm(instance=bounty)
 
     return render(
         request,
         "bounties/form.html",
-        {"form": form, "bounty": bounty, "action": "edit"},
+        {"form": form, "bounty": bounty, "action": "edit", "has_claims": has_claims},
     )
 
 

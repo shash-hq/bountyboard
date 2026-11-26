@@ -91,8 +91,39 @@ def create_bounty(poster, **fields) -> Bounty:
     return bounty
 
 
+# Once anyone has pitched, these describe the work they pitched on: they are frozen.
+SCOPE_FIELDS = ("title", "description", "category")
+
+
+def _require_terms_not_worsened(bounty, fields) -> None:
+    """After a claim exists the poster may only make the offer better: the reward can go up, the
+    deadline can be extended, and the scope (title, description, category) stays as pitched.
+    Otherwise a poster could attract claimants with a big reward or a small job and then rewrite it.
+
+    A claim of any status counts (a rejected or withdrawn claimant still saw the old terms). To fix
+    a mistake in the scope, cancel the bounty and post it again.
+    """
+    for name in SCOPE_FIELDS:
+        # Compared with surrounding whitespace ignored: the form strips it, so re-submitting an
+        # untouched field must not look like an edit.
+        if name in fields and str(fields[name]).strip() != str(getattr(bounty, name)).strip():
+            raise InvalidTransition(
+                "This bounty already has claims, so its title, description and category can't change. "
+                "Cancel it and post a new one if the scope was wrong."
+            )
+    if "reward" in fields and fields["reward"] < bounty.reward:
+        raise InvalidTransition("This bounty already has claims, so the reward can only go up.")
+    if "deadline" in fields:
+        # The edit form shows the deadline to the minute, so an untouched field comes back up to 59 s
+        # earlier than the stored value. Keep the stored value then: saving the cut one would shorten it.
+        if bounty.deadline.replace(second=0, microsecond=0) <= fields["deadline"] < bounty.deadline:
+            fields["deadline"] = bounty.deadline
+        if fields["deadline"] < bounty.deadline:
+            raise InvalidTransition("This bounty already has claims, so the deadline can only be extended.")
+
+
 def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
-    """Poster edits an OPEN bounty's details.
+    """Poster edits an OPEN bounty's details. Once any claim exists, only improvements are allowed.
 
     Locks the bounty, re-checks that it is still OPEN and not expired AFTER the lock, and
     writes ONLY the editable columns. The old view saved a full row from an unlocked read, so
@@ -108,6 +139,11 @@ def update_bounty_details(bounty_id: int, user, **fields) -> Bounty:
             raise NotPermitted("You do not have permission to edit this bounty.")
         if bounty.status != BountyStatus.OPEN or bounty.is_expired:
             raise InvalidTransition("Only active OPEN bounties can be edited.")
+
+        # Read under the bounty lock, which create_claim also takes, so no claim can appear between
+        # this check and the write: what a claimant pitched on can't be changed out from under them.
+        if Claim.objects.filter(bounty=bounty).exists():
+            _require_terms_not_worsened(bounty, fields)
 
         for name, value in fields.items():
             setattr(bounty, name, value)
