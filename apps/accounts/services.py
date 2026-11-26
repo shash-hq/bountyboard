@@ -4,11 +4,11 @@ Lock rule (shared with apps/bounties/services.py): bounty -> claims -> users. No
 touches bounties or claims (only reads, to see whether an account owns rows), and each function
 locks at most one user row at a time, after the per-address advisory lock.
 """
-import time
 import hashlib
 import hmac
 import logging
 import secrets
+import time
 from datetime import timedelta
 from functools import partial
 
