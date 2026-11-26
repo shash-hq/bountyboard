@@ -1,6 +1,8 @@
 """After a claim exists the poster may only improve the offer (reward up, deadline later, scope frozen)."""
+import unittest
 from datetime import timedelta
 
+from django.db import connection, transaction
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -98,13 +100,12 @@ class EditTermsTests(TestCase):
         self.assertEqual(self.bounty.reward, 1000)
 
 
+@unittest.skipUnless(connection.vendor == "postgresql", "race tests need PostgreSQL row locks")
 class EditVersusClaimRaceTests(TransactionTestCase):
     """The claim check is made under the bounty lock. A claim committed while the edit waits for that
     lock must be seen by it; checking before the lock would let the cut through."""
 
     def test_a_claim_that_commits_first_blocks_the_edit(self):
-        from django.db import transaction
-
         poster = create_verified_user("poster", "poster@gmail.com", PW)
         claimant = create_verified_user("claimant", "claimant@gmail.com", PW)
         bounty = mkbounty(poster)
