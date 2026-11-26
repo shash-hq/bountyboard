@@ -101,7 +101,7 @@ class Bounty(models.Model):
         ]
         constraints = [
             # I2, the part one row can express. That the claim is ACCEPTED and belongs to this
-            # bounty spans two tables, so the services stay responsible for it.
+            # bounty spans two tables: deferred triggers check that (migration 0012).
             models.CheckConstraint(
                 condition=(
                     models.Q(status__in=[BountyStatus.CLAIMED, BountyStatus.DONE], accepted_claim__isnull=False)

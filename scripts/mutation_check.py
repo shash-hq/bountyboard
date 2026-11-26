@@ -92,6 +92,8 @@ MUTATIONS = [
      r"(?s)        migrations\.AddConstraint\(.*?(?=    \]\n)", "", DB),
     ("I1 unique index", CONSTRAINTS,
      r"(?s)        migrations\.AddConstraint\(\n            model_name=\"claim\".*?(?=    \]\n)", "", DB),
+    ("I2 accepted-claim triggers", "apps/bounties/migrations/0012_accepted_claim_matches_bounty.py",
+     r"run\(FORWARD\), run\(REVERSE\)", "migrations.RunPython.noop", DB),
 ]
 
 
