@@ -38,7 +38,8 @@ class ServiceOwnedAdmin(admin.ModelAdmin):
 
 @admin.register(Bounty)
 class BountyAdmin(ServiceOwnedAdmin):
-    service_fields = ("status", "accepted_claim")
+    # deadline too: moving an expired bounty's deadline would make it live again past the cap (I4).
+    service_fields = ("status", "accepted_claim", "deadline")
     list_display = [
         "title",
         "poster",
