@@ -1,7 +1,7 @@
 # Scheduling `/internal/tick`
 
-The tick closes overdue bounties and lapsed verifications, sends queued email, purges abandoned
-signups and, by being a request, keeps the free web instance awake.
+The tick closes overdue bounties and lapsed verifications, sends queued email and, by being a
+request, keeps the free web instance awake. (PR #33 adds the purge of abandoned signups to it.)
 
 ## Why not only GitHub Actions
 
@@ -20,7 +20,8 @@ idle minutes, and email retries wait for a tick. Keep the workflow as a backup, 
 
 ## Set up
 
-1. Make sure `TICK_SECRET` is set on the web service.
+1. Make sure `TICK_SECRET` is set on the web service: random, at least 32 characters (for example
+   `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
 2. Fill the two placeholders in `tick-scheduler.sql` **in the SQL editor** and run it. Do not save
    the filled-in file in the repository.
 3. After 10-20 minutes, check both halves:
@@ -36,8 +37,9 @@ idle minutes, and email retries wait for a tick. Keep the workflow as a backup, 
 4. `pg_net` keeps responses for about 6 hours.
 
 To stop it: `select cron.unschedule('bountyboard-tick');`
-To rotate the secret: update it on the web service, then `vault.update_secret(...)` for
-`bountyboard_tick_secret`.
+To rotate the secret, update all three places: first the web service, then `vault.update_secret(...)`
+for `bountyboard_tick_secret`, then the GitHub repository secret `TICK_SECRET` used by the backup
+workflow. Ticks answer `403` between the first step and the others; the next one catches up.
 
 ## Limits and things to verify
 

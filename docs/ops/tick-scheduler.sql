@@ -6,7 +6,16 @@ create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
 -- The URL and the shared secret live in Vault, not in the job text.
-select vault.create_secret('https://<your-host>/internal/tick/', 'bountyboard_tick_url');
+-- The secret travels in a header, so anything but https is refused here.
+do $$
+declare
+    tick_url text := 'https://<your-host>/internal/tick/';
+begin
+    if tick_url not like 'https://%' then
+        raise exception 'The tick URL must start with https://';
+    end if;
+    perform vault.create_secret(tick_url, 'bountyboard_tick_url');
+end $$;
 select vault.create_secret('<same value as TICK_SECRET on the web service>', 'bountyboard_tick_secret');
 
 select cron.schedule(
