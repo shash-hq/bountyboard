@@ -80,6 +80,40 @@ class EditTermsTests(TestCase):
         )
         self.assertEqual(b.reward, 1000)
 
+    def test_form_rounding_never_moves_the_stored_deadline_earlier(self):
+        stored = self.bounty.deadline.replace(second=59, microsecond=0)
+        Bounty.objects.filter(pk=self.bounty.pk).update(deadline=stored)
+        self.claim()
+        self.assertEqual(self.edit(deadline=stored.replace(second=0)).deadline, stored)
+        self.bounty.refresh_from_db()
+        self.assertEqual(self.bounty.deadline, stored)
+
+    def form_data(self, **extra):
+        deadline = timezone.localtime(self.bounty.deadline).strftime("%Y-%m-%dT%H:%M")
+        return {"reward": 1500, "deadline": deadline, **extra}
+
+    def test_the_form_disables_scope_and_saves_without_it(self):
+        self.client.force_login(self.poster)
+        url = reverse("bounties:edit", args=[self.bounty.pk])
+        fields = self.client.get(url).context["form"].fields
+        self.assertFalse(any(fields[n].disabled for n in services.SCOPE_FIELDS))
+        self.claim()
+        fields = self.client.get(url).context["form"].fields
+        self.assertTrue(all(fields[n].disabled for n in services.SCOPE_FIELDS))
+        self.assertFalse(fields["reward"].disabled)
+        self.client.post(url, self.form_data())  # a browser leaves disabled inputs out
+        self.bounty.refresh_from_db()
+        self.assertEqual((self.bounty.reward, self.bounty.title), (1500, "Original title"))
+
+    def test_a_stale_form_that_rewrites_scope_is_refused_not_silently_dropped(self):
+        self.claim()
+        self.client.force_login(self.poster)
+        r = self.client.post(reverse("bounties:edit", args=[self.bounty.pk]), self.form_data(
+            title="A different job", description=self.bounty.description, category="Tech"), follow=True)
+        self.assertContains(r, "can&#x27;t change")
+        self.bounty.refresh_from_db()
+        self.assertEqual((self.bounty.reward, self.bounty.title), (1000, "Original title"))
+
     def test_a_rejected_or_withdrawn_claim_still_counts(self):
         for st in (ClaimStatus.REJECTED, ClaimStatus.WITHDRAWN):
             Claim.objects.all().delete()

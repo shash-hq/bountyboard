@@ -115,8 +115,10 @@ def _require_terms_not_worsened(bounty, fields) -> None:
         raise InvalidTransition("This bounty already has claims, so the reward can only go up.")
     if "deadline" in fields:
         # The edit form shows the deadline to the minute, so an untouched field comes back up to 59 s
-        # earlier than the stored value. That isn't a shortening.
-        if fields["deadline"] < bounty.deadline.replace(second=0, microsecond=0):
+        # earlier than the stored value. Keep the stored value then: saving the cut one would shorten it.
+        if bounty.deadline.replace(second=0, microsecond=0) <= fields["deadline"] < bounty.deadline:
+            fields["deadline"] = bounty.deadline
+        if fields["deadline"] < bounty.deadline:
             raise InvalidTransition("This bounty already has claims, so the deadline can only be extended.")
 
 
