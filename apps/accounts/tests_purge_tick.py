@@ -3,6 +3,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -54,8 +55,21 @@ class PurgeFromTickTests(TestCase):
 
     def test_a_link_resent_after_the_listing_saves_the_account(self):
         user = abandoned("resent")
-        listed = User.objects.filter(pk=user.pk)  # what the listing saw before the resend
+        # A listing that still includes the account although its link is now live again.
+        listed = User.objects.filter(pk=user.pk)
         User.objects.filter(pk=user.pk).update(email_token_expires_at=timezone.now() + timedelta(hours=1))
         with mock.patch.object(services, "stale_unverified_users", return_value=listed):
             self.assertEqual(services.purge_stale_unverified(), 0)
         self.assertTrue(User.objects.filter(pk=user.pk).exists())
+
+    def test_a_role_granted_after_the_listing_saves_the_account(self):
+        user = abandoned("promoted")
+        listed = User.objects.filter(pk=user.pk)
+        user.groups.add(Group.objects.get_or_create(name="Verifiers")[0])
+        with mock.patch.object(services, "stale_unverified_users", return_value=listed):
+            self.assertEqual(services.purge_stale_unverified(), 0)
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+
+    def test_the_time_budget_stops_the_scan(self):
+        abandoned("gone")
+        self.assertEqual(services.purge_stale_unverified(max_seconds=0), 0)

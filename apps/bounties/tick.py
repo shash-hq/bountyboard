@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 TICK_BUDGET_SECONDS = 20  # leave headroom under the caller's timeout on a 0.1-CPU instance
 PURGE_PER_TICK = 25
+PURGE_BUDGET_SECONDS = 5
 
 
 @login_not_required
@@ -61,7 +62,7 @@ def tick_view(request):
         logger.exception("tick: outbox drain failed")
         result["outbox_error"] = True
     try:  # last: housekeeping must never delay email
-        result["purged"] = purge_stale_unverified(limit=PURGE_PER_TICK)
+        result["purged"] = purge_stale_unverified(limit=PURGE_PER_TICK, max_seconds=PURGE_BUDGET_SECONDS)
     except Exception:  # noqa: BLE001
         logger.exception("tick: unverified-account purge failed")
         result["purged_error"] = True

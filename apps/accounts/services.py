@@ -4,6 +4,7 @@ Lock rule (shared with apps/bounties/services.py): bounty -> claims -> users. No
 touches bounties or claims (only reads, to see whether an account owns rows), and each function
 locks at most one user row at a time, after the per-address advisory lock.
 """
+import time
 import hashlib
 import hmac
 import logging
@@ -164,22 +165,29 @@ def stale_unverified_users(now=None):
     ).filter(Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now))
 
 
-def purge_stale_unverified(now=None, limit=None) -> int:
+def purge_stale_unverified(now=None, limit=None, max_seconds=None) -> int:
     """Delete stale unverified accounts so nobody can hold an address or username forever.
-    Accounts that own any rows are never deleted. Stops after ``limit`` deletions, if given.
-    Returns the number deleted."""
+    Accounts that own any rows are never deleted. Stops after ``limit`` deletions or ``max_seconds``,
+    if given; the time limit also covers candidates that turn out to be protected, which a deletion
+    count does not. Returns the number deleted."""
     now = now or timezone.now()
     deleted = 0
-    for user in stale_unverified_users(now).order_by("date_joined", "pk"):
+    started = time.monotonic()
+    for user in stale_unverified_users(now).order_by("date_joined", "pk").iterator():
         if limit is not None and deleted >= limit:
             break
+        if max_seconds is not None and time.monotonic() - started >= max_seconds:
+            break
         with transaction.atomic():
-            # Re-check under the lock: a resend or a confirm may have landed since the listing.
+            # Re-check under the lock: a resend, a confirm or a role grant may have landed since the
+            # listing. (Adding a group takes a key-share lock on this row, so it can't slip in after.)
             locked = User.objects.select_for_update().filter(
                 Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now),
                 pk=user.pk, email_verified_at__isnull=True,
             ).first()
-            if locked is not None and not owns_rows(locked):
+            if locked is None or locked.is_staff or locked.is_superuser or locked.groups.exists():
+                continue
+            if not owns_rows(locked):
                 locked.delete()
                 deleted += 1
     return deleted
