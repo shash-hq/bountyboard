@@ -30,8 +30,8 @@ class BoardExpiryTests(TestCase):
         self.soon = mk(self.poster, "Due soon", 1)
         self.later = mk(self.poster, "Due later", 5)
         self.dead = mk(self.poster, "Long expired", -30)
-        self.done = mk(self.poster, "Finished long ago", -10)
-        Bounty.objects.filter(pk=self.done.pk).update(status=BountyStatus.DONE)  # fixture only
+        self.cancelled = mk(self.poster, "Cancelled long ago", -10)
+        Bounty.objects.filter(pk=self.cancelled.pk).update(status=BountyStatus.CANCELLED)  # fixture only
 
     def titles(self, query):
         return [b.title for b in self.client.get(reverse("board") + query).context["bounties"]]
@@ -39,7 +39,7 @@ class BoardExpiryTests(TestCase):
     def test_deadline_soon_puts_actionable_bounties_first_soonest_first(self):
         order = self.titles("?sort=deadline_soon")
         self.assertEqual(order[:2], ["Due soon", "Due later"])
-        self.assertEqual(set(order[2:]), {"Long expired", "Finished long ago"})
+        self.assertEqual(set(order[2:]), {"Long expired", "Cancelled long ago"})
 
     def test_the_open_tab_does_not_offer_expired_bounties(self):
         self.assertEqual(self.titles("?status=OPEN&sort=deadline_soon"), ["Due soon", "Due later"])
@@ -51,7 +51,7 @@ class BoardExpiryTests(TestCase):
         self.assertContains(r, "EXPIRED")
 
     def test_other_sorts_are_unchanged(self):
-        self.assertEqual(self.titles("?sort=newest")[0], "Finished long ago")
+        self.assertEqual(self.titles("?sort=newest")[0], "Cancelled long ago")
 
 
 class CapIgnoresExpiredTests(TestCase):

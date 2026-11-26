@@ -3,7 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, IntegerField, Q, Value, When
-from django.utils import timezone
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -87,7 +86,7 @@ def board_view(request):
     elif status == "EXPIRED":
         # Swept ones, and overdue ones the sweeper hasn't reached: both carry the EXPIRED badge.
         queryset = queryset.filter(
-            Q(status=BountyStatus.EXPIRED) | Q(status=BountyStatus.OPEN, deadline__lte=timezone.now())
+            Q(status=BountyStatus.EXPIRED) | Q(status=BountyStatus.OPEN, deadline__lte=now)
         )
 
     if sort == "reward_high":
