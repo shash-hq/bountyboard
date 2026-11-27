@@ -2,7 +2,7 @@
 PYTHON ?= python
 SETTINGS = --settings=config.settings.test
 
-.PHONY: install lock test coverage stress mutation
+.PHONY: install lock test coverage stress mutation bench
 
 install:
 	$(PYTHON) -m pip install --require-hashes -r requirements-dev.lock
@@ -30,3 +30,7 @@ stress:
 # Strip each lock, constraint and rate limit and require the tests to fail.
 mutation:
 	$(PYTHON) scripts/mutation_check.py
+
+# Time the hot paths and count their queries, on a throwaway database. BENCH="--bounties 5000" to change.
+bench:
+	$(PYTHON) scripts/bench.py $(BENCH)
