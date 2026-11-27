@@ -1,7 +1,7 @@
 # Scheduling `/internal/tick`
 
 The tick closes overdue bounties and lapsed verifications, sends queued email and, by being a
-request, keeps the free web instance awake. (PR #33 adds the purge of abandoned signups to it.)
+request, keeps the free web instance awake. It also purges abandoned signups.
 
 ## Why not only GitHub Actions
 
@@ -37,9 +37,21 @@ idle minutes, and email retries wait for a tick. Keep the workflow as a backup, 
 4. `pg_net` keeps responses for about 6 hours.
 
 To stop it: `select cron.unschedule('bountyboard-tick');`
-To rotate the secret, update all three places: first the web service, then `vault.update_secret(...)`
-for `bountyboard_tick_secret`, then the GitHub repository secret `TICK_SECRET` used by the backup
-workflow. Ticks answer `403` between the first step and the others; the next one catches up.
+To rotate the secret, update all three places, in this order:
+
+1. `TICK_SECRET` on the web service.
+2. The Vault copy, in the SQL editor. `update_secret` takes the secret's id, not its name:
+
+   ```sql
+   select vault.update_secret(
+       (select id from vault.secrets where name = 'bountyboard_tick_secret'),
+       '<new value>'
+   );
+   ```
+
+3. The GitHub repository secret `TICK_SECRET`, used by the backup workflow.
+
+Ticks answer `403` between the first step and the others; the next one catches up.
 
 ## Limits and things to verify
 
