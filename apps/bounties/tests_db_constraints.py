@@ -1,13 +1,14 @@
-"""The database itself enforces I1 and (the same-row half of) I2.
+"""The database itself enforces I1 and I2.
 
 State is written with ``queryset.update()`` on purpose: it skips ``save()``/``full_clean()`` and the
 services, so each rejection here comes from PostgreSQL. Remove a constraint and its test fails.
 """
+import unittest
 from datetime import timedelta
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import RestrictedError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from apps.accounts.testing import create_verified_user
@@ -106,3 +107,54 @@ class DeletionTests(ConstraintTestCase):
         self.make_accepted()
         self.c2.delete()
         self.assertEqual(Claim.objects.count(), 1)
+
+
+@unittest.skipUnless(connection.vendor == "postgresql", "the I2 trigger exists on PostgreSQL only")
+class AcceptedClaimMatchesBountyTests(ConstraintTestCase):
+    """The two-table half of I2, enforced by deferred constraint triggers."""
+
+    def assert_rejected_at_commit(self, write):
+        def check():
+            write()
+            connection.check_constraints()  # what COMMIT would do; a TestCase never commits
+
+        self.assert_rejected_by("accepted_claim_matches_bounty", check)
+
+    def test_pointing_at_a_claim_that_is_not_accepted_is_rejected(self):
+        self.assert_rejected_at_commit(lambda: self.set_bounty(status=BountyStatus.CLAIMED, accepted_claim=self.c1))
+
+    def test_pointing_at_another_bountys_claim_is_rejected(self):
+        other = Bounty.objects.create(
+            poster=self.poster, title="Another constraint bounty", description="x" * 30, reward=100,
+            deadline=timezone.now() + timedelta(days=1),
+        )
+        foreign = Claim.objects.create(bounty=other, claimant=self.first, message="I can do this task.")
+        self.set_claim(foreign, ClaimStatus.ACCEPTED)
+        self.assert_rejected_at_commit(lambda: self.set_bounty(status=BountyStatus.CLAIMED, accepted_claim=foreign))
+
+    def test_an_accepted_claim_cannot_change_status_under_its_bounty(self):
+        self.make_accepted()
+        connection.check_constraints()
+        for status in (ClaimStatus.PENDING, ClaimStatus.WITHDRAWN, ClaimStatus.CANCELLED):
+            self.assert_rejected_at_commit(lambda status=status: self.set_claim(self.c1, status))
+
+    def test_either_write_order_is_accepted_because_only_the_commit_is_judged(self):
+        self.set_bounty(status=BountyStatus.CLAIMED, accepted_claim=self.c1)  # momentarily wrong
+        self.set_claim(self.c1, ClaimStatus.ACCEPTED)
+        connection.check_constraints()
+
+
+@unittest.skipUnless(connection.vendor == "postgresql", "the I2 trigger exists on PostgreSQL only")
+class AcceptedClaimCommitTests(TransactionTestCase):
+    def test_a_real_commit_is_refused(self):
+        poster = create_verified_user("poster", "poster@example.com")
+        helper = create_verified_user("helper", "helper@example.com")
+        bounty = Bounty.objects.create(
+            poster=poster, title="Committed for real", description="x" * 30, reward=100,
+            deadline=timezone.now() + timedelta(days=1),
+        )
+        claim = Claim.objects.create(bounty=bounty, claimant=helper, message="I can do this task.")
+        with self.assertRaisesMessage(IntegrityError, "accepted_claim_matches_bounty"), transaction.atomic():
+            Bounty.objects.filter(pk=bounty.pk).update(status=BountyStatus.CLAIMED, accepted_claim=claim)
+        bounty.refresh_from_db()
+        self.assertEqual(bounty.status, BountyStatus.OPEN)

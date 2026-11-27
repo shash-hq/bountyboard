@@ -58,6 +58,13 @@ class AdminServiceOwnedStateTests(TestCase):
         self.assertEqual(self.bounty.status, BountyStatus.OPEN)
         self.assertIsNone(self.bounty.accepted_claim_id)
 
+    def test_a_bounty_cannot_be_reassigned_to_another_poster(self):
+        model_admin, request, form = self.form_for(self.bounty, poster=self.helper.pk, title="Renamed by admin")
+        self.assertTrue(form.is_valid(), form.errors)
+        model_admin.save_model(request, form.save(commit=False), form, change=True)
+        self.bounty.refresh_from_db()
+        self.assertEqual((self.bounty.title, self.bounty.poster_id), ("Renamed by admin", self.poster.pk))
+
     def test_posted_state_is_ignored_on_a_claim(self):
         other = Bounty.objects.create(
             poster=self.poster,

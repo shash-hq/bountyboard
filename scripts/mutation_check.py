@@ -34,6 +34,15 @@ MUTATIONS = [
     ("bounty row lock", SERVICES, r"Bounty\.objects\.select_for_update\(no_key=True\)\.get\(", "Bounty.objects.get(", RACES),
     ("poster lock in create_bounty", SERVICES, r"User\.objects\.select_for_update\(\)\.get\(pk=poster\.pk\)",
      "User.objects.get(pk=poster.pk)", RACES),
+    ("verifier lock at the desk", "apps/accounts/desk.py",
+     r"User\.objects\.select_for_update\(no_key=True\)(?=\.filter\(pk__in=\[verifier_id, subject_id\]\))",
+     "User.objects", ["apps.accounts.tests_lock_gaps"]),
+    ("user lock in confirm_email", "apps/accounts/services.py",
+     r"User\.objects\.select_for_update\(\)(?=\.filter\(pk=uid, is_active=True\))", "User.objects",
+     ["apps.accounts.tests_lock_gaps"]),
+    ("holder lock in signup", "apps/accounts/services.py",
+     r"User\.objects\.select_for_update\(\)(?=\.filter\(email__iexact=email\))", "User.objects",
+     ["apps.accounts.tests_lock_gaps"]),
     ("user locks in accept_claim", SERVICES,
      r"User\.objects\.select_for_update\(no_key=True\)(?=\.filter\(pk__in=\{poster_id, claimant_id\})",
      "User.objects", ["apps.bounties.tests_accept_gating"]),
@@ -92,7 +101,77 @@ MUTATIONS = [
      r"(?s)        migrations\.AddConstraint\(.*?(?=    \]\n)", "", DB),
     ("I1 unique index", CONSTRAINTS,
      r"(?s)        migrations\.AddConstraint\(\n            model_name=\"claim\".*?(?=    \]\n)", "", DB),
+    ("I2 accepted-claim triggers", "apps/bounties/migrations/0012_accepted_claim_matches_bounty.py",
+     r"run\(FORWARD\), run\(REVERSE\)", "migrations.RunPython.noop", DB),
 ]
+
+
+# Database constraints are dropped by an extra migration in the copy rather than by editing the
+# migration that created them, so this keeps working however the migrations are reorganised. A name
+# that no longer exists makes the migration fail before any test runs, which is reported as SURVIVED.
+DROP_BY_NAME = (
+    "DO $$ DECLARE t regclass; BEGIN SELECT conrelid::regclass INTO t FROM pg_constraint WHERE conname = '{0}'; "
+    "IF t IS NULL THEN EXECUTE 'DROP INDEX {0}'; ELSE EXECUTE format('ALTER TABLE %s DROP CONSTRAINT {0}', t); "
+    "END IF; END $$;"
+)
+DROP_UNIQUE_COLUMN = (
+    "DO $$ DECLARE c text; BEGIN SELECT conname INTO STRICT c FROM pg_constraint WHERE conrelid = '{0}'::regclass "
+    "AND contype = 'u' AND pg_get_constraintdef(oid) = 'UNIQUE ({1})'; "
+    "EXECUTE format('ALTER TABLE {0} DROP CONSTRAINT %I', c); END $$;"
+)
+MODELS = ["apps.accounts.tests_campus_models"]
+# (name, app, sql, tests that must fail)
+CONSTRAINT_DROPS = [
+    *(
+        (name, "accounts", DROP_BY_NAME.format(name), labels)
+        for name, labels in (
+            ("accounts_user_email_ci_uniq", ["apps.accounts.tests_user_model"]),
+            ("accounts_user_username_ci_uniq", ["apps.accounts.tests_user_model"]),
+            ("accounts_user_staff_source_iff_since", MODELS),
+            ("accounts_user_deleted_is_inactive", MODELS),
+            ("accounts_campusverification_one_active_per_user", MODELS),
+            ("accounts_campusverification_revoked_iff_reason", MODELS),
+            ("accounts_campusverification_in_person_fields", MODELS),
+            ("accounts_campusverification_campus_email_fields", MODELS),
+            ("accounts_identityreview_one_open_per_claimant", MODELS),
+            ("accounts_identityreview_resolved_iff_resolution", MODELS),
+        )
+    ),
+    ("unique_bounty_claimant", "bounties", DROP_BY_NAME.format("unique_bounty_claimant"),
+     ["apps.bounties.tests_db_claim_unique"]),
+    *(
+        (name, "bounties", DROP_BY_NAME.format(name), ["apps.bounties.tests_outbox"])
+        for name in ("notification_pending_iff_next_attempt", "notification_sent_has_delivered_at")
+    ),
+    ("unique reg_no_hmac", "accounts", DROP_UNIQUE_COLUMN.format("accounts_studentidentity", "reg_no_hmac"),
+     ["apps.accounts.tests_campus_email"]),
+    ("unique idempotency_key", "bounties", DROP_UNIQUE_COLUMN.format("bounties_notification", "idempotency_key"),
+     ["apps.bounties.tests_inbox"]),
+]
+
+
+def add_migration(tree, app, sql):
+    """Write a migration that runs ``sql`` after the app's current leaf, and return its path."""
+    directory = tree / "apps" / app / "migrations"
+    names = {p.stem for p in directory.glob("0*.py")}
+    needed = {n for n in names for p in directory.glob("0*.py") if f'("{app}", "{n}")' in p.read_text()}
+    leaves = sorted(names - needed)
+    if len(leaves) != 1:
+        sys.exit(f"{app}: expected one leaf migration, found {leaves}")
+    path = directory / "9999_mutation.py"
+    path.write_text(
+        "from django.db import migrations\n\n\nclass Migration(migrations.Migration):\n"
+        f"    dependencies = [({app!r}, {leaves[0]!r})]\n    operations = [migrations.RunSQL({sql!r})]\n"
+    )
+    return path
+
+
+def report(name, result, survivors):
+    # Require a test run that finished and failed; an import error would prove nothing.
+    killed = result.returncode != 0 and re.search(r"^FAILED \(", result.stderr, re.M)
+    print(f"{'caught  ' if killed else 'SURVIVED'} {name}", flush=True)
+    if not killed:
+        survivors.append(name)
 
 
 def run_tests(tree, labels):
@@ -111,7 +190,8 @@ def main():
         shutil.copytree(ROOT, tree, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__", "*.sqlite3", ".env"))
 
         # A suite that is already red would "kill" every mutation, so require green first.
-        baseline = run_tests(tree, sorted({label for *_, labels in MUTATIONS for label in labels}))
+        every = [*MUTATIONS, *CONSTRAINT_DROPS]
+        baseline = run_tests(tree, sorted({label for *_, labels in every for label in labels}))
         if baseline.returncode:
             sys.exit("Unmutated tests fail, so the mutation results would be meaningless:\n" + baseline.stderr[-4000:])
 
@@ -124,14 +204,15 @@ def main():
             path.write_text(mutated)
             result = run_tests(tree, labels)
             path.write_text(original)
-            # Require a test run that finished and failed; an import error would prove nothing.
-            killed = result.returncode != 0 and re.search(r"^FAILED \(", result.stderr, re.M)
-            print(f"{'caught  ' if killed else 'SURVIVED'} {name}", flush=True)
-            if not killed:
-                survivors.append(name)
+            report(name, result, survivors)
+
+        for name, app, sql, labels in CONSTRAINT_DROPS:
+            extra = add_migration(tree, app, sql)
+            report(f"constraint {name}", run_tests(tree, labels), survivors)
+            extra.unlink()
     if survivors:
         sys.exit(f"{len(survivors)} protection(s) can be removed without a test failing: {', '.join(survivors)}")
-    print(f"All {len(MUTATIONS)} mutations caught.")
+    print(f"All {len(MUTATIONS) + len(CONSTRAINT_DROPS)} mutations caught.")
 
 
 if __name__ == "__main__":
