@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import logging
 import secrets
+import time
 from datetime import timedelta
 from functools import partial
 
@@ -164,14 +165,31 @@ def stale_unverified_users(now=None):
     ).filter(Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now))
 
 
-def purge_stale_unverified(now=None) -> int:
+def purge_stale_unverified(now=None, limit=None, max_seconds=None) -> int:
     """Delete stale unverified accounts so nobody can hold an address or username forever.
-    Accounts that own any rows are never deleted. Returns the number deleted."""
+    Accounts that own any rows are never deleted. Stops after ``limit`` deletions or ``max_seconds``,
+    if given; the time limit also covers candidates that turn out to be protected, which a deletion
+    count does not. A row someone else has locked is skipped, so a lock wait cannot overrun the budget;
+    a later run sees it again. Returns the number deleted."""
+    now = now or timezone.now()
     deleted = 0
-    for user in stale_unverified_users(now):
+    started = time.monotonic()
+    for user in stale_unverified_users(now).order_by("date_joined", "pk").iterator():
+        if limit is not None and deleted >= limit:
+            break
+        if max_seconds is not None and time.monotonic() - started >= max_seconds:
+            break
         with transaction.atomic():
-            locked = User.objects.select_for_update().filter(pk=user.pk, email_verified_at__isnull=True).first()
-            if locked is not None and not owns_rows(locked):
+            # Re-check under the lock: a resend, a confirm or a role grant may have landed since the
+            # listing. (A group added from now on cannot commit while we hold the row: its foreign-key
+            # check needs a key-share lock on it.)
+            locked = User.objects.select_for_update(skip_locked=True).filter(
+                Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now),
+                pk=user.pk, email_verified_at__isnull=True,
+            ).first()
+            if locked is None or locked.is_staff or locked.is_superuser or locked.groups.exists():
+                continue
+            if not owns_rows(locked):
                 locked.delete()
                 deleted += 1
     return deleted
