@@ -44,6 +44,7 @@ usually_the_owner = st.sampled_from([True, True, True, False])
 
 class Lifecycle(RuleBasedStateMachine):
     moved: set = set()  # moves the rules made across all examples, so the test cannot pass by doing nothing
+    edits: set = set()  # (had claims, was accepted) for every edit tried
 
     def __init__(self):
         super().__init__()
@@ -107,6 +108,38 @@ class Lifecycle(RuleBasedStateMachine):
         if created:
             # I4 by tier, checked when posting: a lapsed user may legitimately keep more than the lower cap.
             assert services.count_live_open_bounties(user) <= open_bounty_cap(user)
+
+    @rule(
+        which=picks,
+        owner=usually_the_owner,
+        who=people,
+        reward=st.sampled_from([50, 100, 150]),
+        days=st.sampled_from([-1, 0, 1]),
+        retitle=st.booleans(),
+    )
+    def edit(self, which, owner, who, reward, days, retitle):
+        """An edit may never worsen the terms for people who have already pitched."""
+        if not (bounty := self.pick(Bounty, which, BountyStatus.OPEN)):
+            return
+        before = (bounty.title, bounty.description, bounty.category, bounty.reward, bounty.deadline)
+        pitched = bounty.claims.exists()
+        done = self.attempt(
+            services.update_bounty_details,
+            bounty.pk,
+            bounty.poster if owner else self.users[who],
+            title="A rewritten title" if retitle else bounty.title,
+            description=bounty.description,
+            category=bounty.category,
+            reward=reward,
+            deadline=bounty.deadline + timedelta(days=days),
+        )
+        bounty.refresh_from_db()
+        after = (bounty.title, bounty.description, bounty.category, bounty.reward, bounty.deadline)
+        if not done:
+            assert after == before, "a refused edit changed the bounty"
+        elif pitched:
+            assert after[:3] == before[:3] and after[3] >= before[3] and after[4] >= before[4], (before, after)
+        self.edits.add((pitched, bool(done)))
 
     @rule(which=picks, who=people)
     def pitch(self, which, who):
@@ -277,11 +310,12 @@ class Lifecycle(RuleBasedStateMachine):
 class LifecycleInvariantTests(TestCase):
     def test_invariants_hold_over_random_sequences(self):
         Lifecycle.moved = set()
+        Lifecycle.edits = set()
         run_state_machine_as_test(
             Lifecycle,
             settings=settings(
                 max_examples=100,
-                stateful_step_count=30,
+                stateful_step_count=40,
                 deadline=None,
                 derandomize=True,  # same sequences every run, so CI cannot flake
                 database=None,
@@ -291,3 +325,5 @@ class LifecycleInvariantTests(TestCase):
         expected = {("Bounty", *move) for move in ALLOWED_BOUNTY_MOVES}
         expected |= {("Claim", *move) for move in ALLOWED_CLAIM_MOVES}
         self.assertEqual(expected - Lifecycle.moved, set(), "some transitions were never exercised")
+        both = {(pitched, accepted) for pitched in (False, True) for accepted in (False, True)}
+        self.assertEqual(both - Lifecycle.edits, set(), "some kinds of edit were never exercised")
