@@ -78,6 +78,14 @@ class PurgeFromTickTests(TestCase):
             self.assertEqual(services.purge_stale_unverified(), 0)
         self.assertTrue(User.objects.filter(pk=user.pk).exists())
 
+    def test_a_confirmation_after_the_listing_saves_the_account(self):
+        user = abandoned("confirmed")
+        # Confirming also clears the link expiry, so only the email_verified_at re-check protects it.
+        User.objects.filter(pk=user.pk).update(email_verified_at=timezone.now(), email_token_expires_at=None)
+        with mock.patch.object(services, "stale_unverified_users", return_value=stale_listing(user)):
+            self.assertEqual(services.purge_stale_unverified(), 0)
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+
     def test_the_time_budget_stops_the_scan(self):
         abandoned("gone")
         self.assertEqual(services.purge_stale_unverified(max_seconds=0), 0)
