@@ -54,6 +54,8 @@ MUTATIONS = [
     ("claim-only lock in cancel and expire", SERVICES,
      r'(?s)of=\("self",\)(\)\.select_related\("claimant"\)(?:.*?))of=\("self",\)(?=\)\.select_related\("claimant"\))', r"\1",
      ["apps.bounties.tests_revocation_deadlocks"]),
+    ("purge SKIP LOCKED", "apps/accounts/services.py", r"skip_locked=True(?=\)\.filter\()", "",
+     ["apps.accounts.tests_purge_tick"]),
     ("claim state check before emailing", "apps/bounties/emails.py", r"claim\.status != ClaimStatus\.ACCEPTED",
      "False", ["apps.bounties.tests_outbox_safety"]),
     ("daily cap lock", "apps/bounties/outbox.py", r"if not _take_budget_lock\(\):", "if False:",

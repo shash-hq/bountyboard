@@ -169,7 +169,8 @@ def purge_stale_unverified(now=None, limit=None, max_seconds=None) -> int:
     """Delete stale unverified accounts so nobody can hold an address or username forever.
     Accounts that own any rows are never deleted. Stops after ``limit`` deletions or ``max_seconds``,
     if given; the time limit also covers candidates that turn out to be protected, which a deletion
-    count does not. Returns the number deleted."""
+    count does not. A row someone else has locked is skipped, so a lock wait cannot overrun the budget;
+    a later run sees it again. Returns the number deleted."""
     now = now or timezone.now()
     deleted = 0
     started = time.monotonic()
@@ -180,8 +181,9 @@ def purge_stale_unverified(now=None, limit=None, max_seconds=None) -> int:
             break
         with transaction.atomic():
             # Re-check under the lock: a resend, a confirm or a role grant may have landed since the
-            # listing. (Adding a group takes a key-share lock on this row, so it can't slip in after.)
-            locked = User.objects.select_for_update().filter(
+            # listing. (A group added from now on cannot commit while we hold the row: its foreign-key
+            # check needs a key-share lock on it.)
+            locked = User.objects.select_for_update(skip_locked=True).filter(
                 Q(email_token_expires_at__isnull=True) | Q(email_token_expires_at__lte=now),
                 pk=user.pk, email_verified_at__isnull=True,
             ).first()
