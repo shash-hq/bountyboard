@@ -9,7 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **`render.yaml`**: Render Blueprint for a free web service in Singapore (1 worker x 4 threads, migrations at build time, `/healthz` health check). Validated against Render's published schema and checked against `config/settings/prod.py` by tests; not yet deployed.
+- **Accounts:** custom user model with case-insensitive unique email and username, email verification by link, and login required outside the public pages.
+- **Campus verification:** by campus email or at an in-person desk, with expiry, renewal reminders, revocation, a block after revocation for cause, and a moderator review queue for duplicate registration numbers.
+- **Expiry:** overdue bounties become `EXPIRED`.
+- **Notifications:** a transactional outbox, drained by `/internal/tick`, which also expires bounties and verifications and purges abandoned signups.
+- **Database enforcement:** constraints and triggers behind the claim and bounty state rules.
+- **Checks:** race, state-machine and mutation tests on PostgreSQL, hashed lockfiles, `make bench`.
+- **Deployment:** `render.yaml` for a Render web service, and a runbook for scheduling the tick from Supabase.
+
+### Changed
+- Accepting a claim requires both users to be campus-verified. Contact details come from the profile and are shown only to the two parties, after acceptance.
+- The open-bounty cap is 1 for email-verified users and 5 for campus-verified users.
+- Signup accepts any email domain; the domain no longer gates access.
+- After a bounty has a claim, its poster can only improve the offer.
+
+### Fixed
+- Open redirects, contact leaked before acceptance, races in claim acceptance and bounty creation, and admin actions that bypassed the state rules.
+- Production refuses to start with missing or unsafe settings.
 
 ---
 
