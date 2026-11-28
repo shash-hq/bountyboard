@@ -6,8 +6,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Django 5.2 LTS](https://img.shields.io/badge/django-5.2%20LTS-092E20.svg)](https://www.djangoproject.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests Passing](https://img.shields.io/badge/tests-51%20passed-5CE1A8.svg)](apps/bounties/tests.py)
-[![Test Coverage](https://img.shields.io/badge/coverage-88%25-FFD60A.svg)](apps/bounties/tests.py)
+[![CI](https://github.com/shash-hq/bountyboard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shash-hq/bountyboard/actions/workflows/ci.yml)
 [![Style: Neo-Brutalist](https://img.shields.io/badge/style-neo--brutalism-FF5FA2.svg)](static/css/tokens.css)
 
 ---
@@ -52,9 +51,9 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. (To inspect
 
 1. **Settle Offline**: In v1, there are no payment gateways or real-time chat rooms. The UI clearly states **"Settle Offline via Cash or Direct UPI"**. Work and verification happen face-to-face on campus.
 2. **Atomic Single Solver**: When the poster accepts one claim, a database row-lock (`select_for_update`) executes inside `transaction.atomic()`. The chosen claim becomes `ACCEPTED`, other pending claims are automatically `REJECTED`, and the bounty status switches to `CLAIMED`.
-3. **Contact Privacy**: WhatsApp/email contacts entered during claims are visible **only to the bounty poster**. The poster's contact email is revealed to the claimant only after their claim is accepted.
+3. **Contact Privacy**: Neither side sees the other's contact before a claim is accepted. Accepting requires both users to be campus-verified; after that, each sees the contact details on the other's profile.
 4. **Campus Discipline**:
-   - Students may have at most **5 active OPEN bounties** at any time.
+   - Open bounties are capped at **1** for email-verified users and **5** for campus-verified users.
    - Claims can only be filed on open, non-expired listings, and students cannot claim their own bounties.
    - Claimants can cleanly withdraw pending claims before poster review.
    - Campus moderators (in the `Moderators` group) review flagged abuse reports and can hide listings from the board.
@@ -92,7 +91,7 @@ This repository serves as a reference implementation mapping every core concept 
 | **Unit II** | Custom Error Handlers | [`apps/pages/views.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/pages/views.py#L68-L81) | Custom handlers for HTTP 400, 403, 404, and 500 error pages with neo-brutalist templates. |
 | **Unit III** | Template Inheritance & Layout | [`templates/base.html`](file:///Users/shashankranjan/Developer/bountyboard/templates/base.html) | Root layout with accessible skip link, announcement ticker, responsive nav, and message blocks. |
 | **Unit III** | Custom Template Tags & Filters | [`apps/bounties/templatetags/bounty_tags.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/bounties/templatetags/bounty_tags.py) | Filters `inr_format` (Indian numbering system) and `time_left` (humanized relative deadlines). |
-| **Unit III** | Debugging & Automated Testing | [`apps/bounties/tests.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/bounties/tests.py) | Django Debug Toolbar integration in dev; 51 unit & transaction tests verifying concurrency and denials. |
+| **Unit III** | Debugging & Automated Testing | [`apps/bounties/tests.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/bounties/tests.py) | Django Debug Toolbar integration in dev; Unit, transaction and concurrency tests, run in CI on PostgreSQL. |
 | **Unit IV** | Forms & Post-Redirect-Get (PRG) | [`apps/bounties/forms.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/bounties/forms.py) | ModelForms with field cleaning, CSRF verification, and PRG with `django.contrib.messages`. |
 | **Unit IV** | Form Validation & Clean Methods | [`apps/bounties/forms.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/bounties/forms.py#L32-L48), [`apps/accounts/forms.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/accounts/forms.py#L22-L35) | `clean_email`, `clean_reward`, `clean_deadline`, and institutional domain validation. |
 | **Unit V** | Models, ForeignKeys & Constraints | [`apps/bounties/models.py`](file:///Users/shashankranjan/Developer/bountyboard/apps/bounties/models.py) | `Bounty`, `Claim`, and `Report` models with `ForeignKey`, `OneToOneField`, unique constraints, and custom properties. |
@@ -164,18 +163,16 @@ checked against `prod.py` by tests, but the first real deploy has to be done and
 
 ##  Testing & Quality Assurance
 
-Run the test suite with coverage:
+The tests need PostgreSQL, because SQLite ignores the row locks they exercise:
 
 ```bash
-coverage run manage.py test
-coverage report
+export DATABASE_URL=postgres://localhost/bountyboard
+make test       # the suite
+make coverage   # branch coverage of app code, with the same gate as CI
+make mutation   # remove each lock, constraint and rate limit; a test must fail
 ```
 
-### Coverage Summary
-- **Total Tests**: 51 passed (0 failures, 0 errors).
-- **Project Coverage**: 88%.
-- **Zero N+1 Queries**: Verified on live board, bounty detail, and user dashboard.
-- **Race Condition Prevention**: Concurrency tests verify that multiple simultaneous claims cannot be accepted for the same bounty.
+[CI](https://github.com/shash-hq/bountyboard/actions/workflows/ci.yml) runs the suite, the coverage gate and the mutation check.
 
 ---
 
