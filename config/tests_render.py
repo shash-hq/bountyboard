@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BLUEPRINT = (ROOT / "render.yaml").read_text()
 CODE = "\n".join(re.sub(r"\s#.*$", "", line) for line in BLUEPRINT.splitlines() if not line.lstrip().startswith("#"))
 PROD = (ROOT / "config/settings/prod.py").read_text()
-SECRET_KEYS = ("DATABASE_URL", "EMAIL_URL", "ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "SITE_URL")
+SECRET_KEYS = ("SECRET_KEY", "DATABASE_URL", "EMAIL_URL", "ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "SITE_URL")
 
 
 def env_blocks():
@@ -30,8 +30,14 @@ class RenderBlueprintTests(SimpleTestCase):
             with self.subTest(key=key):
                 self.assertIn("sync: false", blocks[key])
                 self.assertNotIn("value:", blocks[key])
-        self.assertIn("generateValue: true", blocks["SECRET_KEY"])
-        self.assertNotIn("value:", blocks["SECRET_KEY"])
+
+    def test_no_secret_is_left_to_render_to_generate(self):
+        # Render generates 44 characters, which prod.py's 50-character SECRET_KEY check refuses.
+        self.assertNotIn("generateValue", CODE)
+
+    def test_the_smtp_example_uses_a_port_the_free_tier_allows(self):
+        self.assertRegex(BLUEPRINT, r"smtp-relay\.brevo\.com:2525")
+        self.assertNotRegex(BLUEPRINT, r"smtp-relay\.brevo\.com:(25|465|587)\b")
 
     def test_production_settings_module_is_selected(self):
         self.assertRegex(env_blocks()["DJANGO_SETTINGS_MODULE"], r"value:\s*config\.settings\.prod")

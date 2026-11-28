@@ -118,7 +118,7 @@ Configuration is managed via `django-environ`. Copy `.env.example` to `.env` to 
 | `TRUSTED_PROXY_COUNT` | Integer | `0` | Number of trusted reverse proxies that append to `X-Forwarded-For`. `0` ignores the header (rate limits then see the proxy's IP). Set it only after checking the real deployment. |
 | `SITE_URL` | String | `http://localhost:8000` in dev; **required in prod** | Public `https://` base URL of the site. |
 | `ALLOWED_CAMPUS_DOMAINS` | List | `lpu.co.in` | Email domains (exact match) that make a confirmed address campus-verified. Signup itself is open to any domain. |
-| `EMAIL_URL` | String | `consolemail://` | Email backend URL (`smtp://user:pass@smtp.example.com:587` in production). |
+| `EMAIL_URL` | String | `consolemail://` | Email backend URL (`smtp+tls://user:pass@smtp.example.com:2525` in production). Unset in production, emails are only printed to the logs. |
 | `SECURE_SSL_REDIRECT` | Boolean | `True` in prod | Forces HTTPS redirects on all incoming connections. |
 | `SESSION_COOKIE_SECURE` | Boolean | `True` in prod | Restricts session cookies to HTTPS connections only. |
 | `CSRF_COOKIE_SECURE` | Boolean | `True` in prod | Restricts CSRF cookies to HTTPS connections only. |
@@ -148,16 +148,18 @@ Target: a free Render web service in Singapore with a free Supabase Postgres (al
    (port 5432). The direct connection is IPv6-only and will not work from Render.
 2. In Render, click **New &rarr; Blueprint** and select this repository. [`render.yaml`](render.yaml)
    defines the service; Render asks once for the values marked `sync: false`:
-   `DATABASE_URL`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL`, `EMAIL_URL` and
-   `DEFAULT_FROM_EMAIL`. `SECRET_KEY` is generated. Production **refuses to boot** if a required
+   `SECRET_KEY`, `DATABASE_URL`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL`,
+   `REG_NO_HMAC_KEY`, `CARD_NAME_KEYS`, `TICK_SECRET`, `EMAIL_URL` and `DEFAULT_FROM_EMAIL`.
+   The comments in `render.yaml` say how to generate the secrets. Render's free tier blocks SMTP
+   ports 25, 465 and 587, so `EMAIL_URL` uses 2525. Production **refuses to boot** if a required
    value is missing or unsafe (see the environment table above).
 3. Build runs `collectstatic` and `migrate`, so a failing migration fails the deploy and the
    previous version keeps serving. Gunicorn runs with 1 worker and 4 threads.
 4. `TRUSTED_PROXY_COUNT` is left unset on purpose; check the real `X-Forwarded-For` chain on the
    live instance before setting it (rate limits see the proxy address until then).
 
-This blueprint has **not** been deployed yet: it is validated against Render's published schema and
-checked against `prod.py` by tests, but the first real deploy has to be done and measured by hand.
+Tests check `render.yaml` against `prod.py`; they cannot run a deploy, so verify and measure each
+new deployment by hand.
 
 ---
 
