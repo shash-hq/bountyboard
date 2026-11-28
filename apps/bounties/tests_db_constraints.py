@@ -72,8 +72,8 @@ class BountyPointerTests(ConstraintTestCase):
             with self.subTest(status=status):
                 self.assert_rejected_by(self.CONSTRAINT, lambda: self.set_bounty(status=status))
 
-    def test_open_or_cancelled_with_an_accepted_claim_is_rejected(self):
-        for status in (BountyStatus.OPEN, BountyStatus.CANCELLED):
+    def test_open_cancelled_or_expired_with_an_accepted_claim_is_rejected(self):
+        for status in (BountyStatus.OPEN, BountyStatus.CANCELLED, BountyStatus.EXPIRED):
             with self.subTest(status=status):
                 self.assert_rejected_by(
                     self.CONSTRAINT, lambda: self.set_bounty(status=status, accepted_claim=self.c1)
