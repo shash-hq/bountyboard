@@ -24,16 +24,6 @@
 
 ---
 
-##  Live Demo & Deployment
-
-- **Live URL**: [https://bountyboard.up.railway.app](https://bountyboard.up.railway.app) (Staging: [https://bountyboard-demo.onrender.com](https://bountyboard-demo.onrender.com))
-- **Demo Accounts**:
-  - Moderator: `campus_mod` / `Password123!` (holds `bounties.moderate` permission)
-  - Student: `priya_cs` / `Password123!`
-  - Student: `rohit_ee` / `Password123!`
-
----
-
 ##  Run Locally in 5 Commands
 
 ```bash
