@@ -51,7 +51,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. (To inspect
 
 1. **Settle Offline**: In v1, there are no payment gateways or real-time chat rooms. The UI clearly states **"Settle Offline via Cash or Direct UPI"**. Work and verification happen face-to-face on campus.
 2. **Atomic Single Solver**: When the poster accepts one claim, a database row-lock (`select_for_update`) executes inside `transaction.atomic()`. The chosen claim becomes `ACCEPTED`, other pending claims are automatically `REJECTED`, and the bounty status switches to `CLAIMED`.
-3. **Contact Privacy**: Neither side sees the other's contact before a claim is accepted. Accepting requires both users to be campus-verified; after that, each sees the contact details on the other's profile.
+3. **Contact Privacy**: Neither side sees the other's contact before a claim is accepted. Accepting requires both users to be campus-verified; after that, each sees the contact details on the other's profile. A moderator can also reveal a user's contact, with a reason, and that is audited.
 4. **Campus Discipline**:
    - Open bounties are capped at **1** for email-verified users and **5** for campus-verified users.
    - Claims can only be filed on open, non-expired listings, and students cannot claim their own bounties.
