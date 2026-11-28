@@ -33,9 +33,10 @@ services:
       - key: SITE_URL # e.g. https://bountyboard.onrender.com
         sync: false
       # Campus verification. Set these once by hand in the dashboard; never commit or back them up.
-      - key: REG_NO_HMAC_KEY # >= 32 random chars, distinct from SECRET_KEY
+      - key: REG_NO_HMAC_KEY # >= 32 random chars, distinct from SECRET_KEY: `openssl rand -hex 32`
         sync: false
-      - key: CARD_NAME_KEYS # comma-separated Fernet keys, first one encrypts
+      - key: CARD_NAME_KEYS # comma-separated Fernet keys, first one encrypts. Generate one with
+      # `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`
         sync: false
       # Shared with the GitHub Actions tick (repository secrets TICK_URL, TICK_SECRET). At least 32
       # characters, e.g. `openssl rand -hex 32`. Unset disables /internal/tick: no expiry, no retries.
