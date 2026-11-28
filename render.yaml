@@ -22,8 +22,10 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.8
       # Required by config/settings/prod.py: the app refuses to boot without these.
+      # Not generateValue: Render's generated value is 44 characters and prod.py requires 50.
+      # e.g. `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`
       - key: SECRET_KEY
-        generateValue: true
+        sync: false
       - key: ALLOWED_HOSTS # e.g. bountyboard.onrender.com (comma-separated, no *)
         sync: false
       - key: CSRF_TRUSTED_ORIGINS # e.g. https://bountyboard.onrender.com (explicit https origins)
@@ -31,9 +33,10 @@ services:
       - key: SITE_URL # e.g. https://bountyboard.onrender.com
         sync: false
       # Campus verification. Set these once by hand in the dashboard; never commit or back them up.
-      - key: REG_NO_HMAC_KEY # >= 32 random chars, distinct from SECRET_KEY
+      - key: REG_NO_HMAC_KEY # >= 32 random chars, distinct from SECRET_KEY: `openssl rand -hex 32`
         sync: false
-      - key: CARD_NAME_KEYS # comma-separated Fernet keys, first one encrypts
+      - key: CARD_NAME_KEYS # comma-separated Fernet keys, first one encrypts. Generate one with
+      # `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`
         sync: false
       # Shared with the GitHub Actions tick (repository secrets TICK_URL, TICK_SECRET). At least 32
       # characters, e.g. `openssl rand -hex 32`. Unset disables /internal/tick: no expiry, no retries.
@@ -42,7 +45,8 @@ services:
       # Supabase Supavisor SESSION-mode pooler (port 5432, IPv4); the direct host is IPv6-only.
       - key: DATABASE_URL
         sync: false
-      # Brevo SMTP, e.g. smtp+tls://user:pass@smtp-relay.brevo.com:587 . Without it, emails go nowhere.
+      # Brevo SMTP, e.g. smtp+tls://user:pass@smtp-relay.brevo.com:2525 (write an @ in the user as %40).
+      # Port 2525: Render's free tier blocks 25, 465 and 587. Without this, emails are only printed to the logs.
       - key: EMAIL_URL
         sync: false
       - key: DEFAULT_FROM_EMAIL # a domain with SPF/DKIM/DMARC
