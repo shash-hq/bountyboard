@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deployment:** `render.yaml` for a Render web service, and a runbook for scheduling the tick from Supabase.
 
 ### Changed
-- Accepting a claim requires both users to be campus-verified. Contact details come from the profile and are shown only to the two parties, after acceptance.
+- Accepting a claim requires both users to be campus-verified. Contact details come from the profile and are shown to the two parties only after acceptance. A moderator can also reveal them, with a reason, and that is audited.
 - The open-bounty cap is 1 for email-verified users and 5 for campus-verified users.
 - Signup accepts any email domain; the domain no longer gates access.
 - After a bounty has a claim, its poster can only improve the offer.
