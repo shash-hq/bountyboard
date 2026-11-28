@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SERVICES = "apps/bounties/services.py"
 VIEWS = "apps/bounties/views.py"
 CONSTRAINTS = "apps/bounties/migrations/0003_accepted_claim_constraints.py"
+# I2's latest definition: mutating the superseded one in 0003 changes nothing.
+I2_CONSTRAINT = "apps/bounties/migrations/0008_expired_in_accepted_claim_constraint.py"
 
 RACES = ["apps.bounties.tests_race_anomalies", "apps.bounties.tests_races"]
 LIMITS = ["apps.bounties.tests_ratelimits"]
@@ -98,9 +100,12 @@ MUTATIONS = [
     ("claim rate limit", VIEWS, after("bounty_claim_view"), "", LIMITS),
     ("report rate limit", VIEWS, after("bounty_report_view"), "", LIMITS),
     ("signup rate limit", "apps/accounts/views.py", after("signup_view"), "", ["apps.accounts.tests_ratelimits"]),
-    # The latest migration that defines it: removing an earlier, superseded definition changes nothing.
-    ("I2 check constraint", "apps/bounties/migrations/0008_expired_in_accepted_claim_constraint.py",
-     r"(?s)        migrations\.AddConstraint\(.*?(?=    \]\n)", "", DB),
+    ("I2 check constraint", I2_CONSTRAINT, r"(?s)        migrations\.AddConstraint\(.*?(?=    \]\n)", "", DB),
+    # EXPIRED needs no accepted claim (that is what the sweeper writes) and may not keep one.
+    ("EXPIRED in the I2 no-claim group", I2_CONSTRAINT, r'"CANCELLED", "EXPIRED"\]', '"CANCELLED"]',
+     ["apps.bounties.tests_expire_sweep"]),
+    ("I2 no-claim rule for EXPIRED", I2_CONSTRAINT, r'_connector="OR",',
+     '("status", "EXPIRED"),\n                    _connector="OR",', DB),
     ("I1 unique index", CONSTRAINTS,
      r"(?s)        migrations\.AddConstraint\(\n            model_name=\"claim\".*?(?=    \]\n)", "", DB),
     ("I2 accepted-claim triggers", "apps/bounties/migrations/0012_accepted_claim_matches_bounty.py",
